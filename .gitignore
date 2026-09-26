@@ -1,0 +1,17 @@
+.env
+.env.*
+!.env.example
+.local-secrets/
+.local-state/
+RUNIIS_CREDENCIALES_MAESTRAS.txt
+RUNIIS_CREDENCIALES_MAESTRAS
+.backup-pre-infra-
+node_modules/
+.next/
+.netlify/
+.vercel/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+*.log
