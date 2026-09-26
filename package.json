@@ -16,6 +16,7 @@
     "react-dom": "19.3.0"
   },
   "devDependencies": {
+    "@netlify/plugin-nextjs": "5.16.0",
     "@types/node": "25.0.10",
     "@types/react": "19.2.8",
     "@types/react-dom": "19.2.3",
