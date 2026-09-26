@@ -6,7 +6,7 @@
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`
 - Development/staging branch: `staging`
-- Result: `INFRA_SETUP_INCOMPLETE` — Netlify site, public staging artifact, Google staging OAuth/provider, and staging Auth URLs are configured. Production deploy/OAuth/secrets, email, DNS/TLS, media smoke, credential cleanup, and remaining smokes are incomplete. No unverified capability is reported as complete.
+- Result: `INFRA_SETUP_INCOMPLETE` — Netlify production/staging deploys, custom-domain TLS, Google staging OAuth/provider, and staging Auth URLs are configured. Production OAuth/Supabase secret migration, email, media smoke, credential cleanup, and remaining smokes are incomplete. No unverified capability is reported as complete.
 
 ## Verified
 
@@ -19,6 +19,8 @@
 | Supabase production | RUNIIS project ref `mdzhsoeqagtwznybwtuy`; current dashboard server credential probe passed | VERIFIED |
 | Netlify account | RUNIIS Free team using Gmail RUNIIS; no card or paid upgrade accepted | VERIFIED |
 | Netlify site and Git source | Public site `runiis-web`, ID `129537db-751a-4828-9651-3cd93fef4c37`, linked only to `LehiSalvador/RUNIIS`; `main` and `staging` allowed | VERIFIED |
+| Netlify deployments | Staging and production builds each publish one Next.js route-handler function; root and health smokes pass | VERIFIED |
+| Production domain | `https://runiismty.com` serves valid TLS; `https://www.runiismty.com` returns HTTPS 301 to apex | VERIFIED |
 | Google OAuth staging | Auth Platform RUNIIS configured; `RUNIIS Staging` Web client uses permanent staging origin and exact staging Supabase callback; provider enabled with staging Site URL and allowlist | VERIFIED |
 | Cloudinary account | Free account and cloud `ecikmiji`; named runtime key and staging variables stored locally, not in Git | VERIFIED (configuration) |
 | PostHog | RUNIIS organization, US project ID `629435`; Product Analytics with autocapture and heatmaps disabled; `infra_smoke_test` visibly received | VERIFIED |
@@ -39,15 +41,18 @@ No values are recorded in this report.
 | PostHog key/host | yes | deferred: Netlify site exists; production context migration remains pending |
 | Sentry DSN/org/project | yes | deferred: Netlify site exists; production context migration remains pending |
 
+Netlify production now also contains generated production-only pass-encryption and cron values, plus Cloudinary, PostHog, and Sentry destinations. Production Supabase publishable/secret and provider credentials remain pending secure retrieval/configuration.
+
 The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/`, `.local-state/`, provider files, backups, and build output are ignored.
 
 ## Deploy and DNS
 
 - Netlify GitHub App authorization is limited to `LehiSalvador/RUNIIS`. Official CLI recovery created the single Free site `runiis-web` (ID `129537db-751a-4828-9651-3cd93fef4c37`) and linked its source to only that repository.
 - Netlify confirmed `runiis-web` is public. The official Next adapter was required because prior deploys published source/output without a route-handler function. The latest staging build now publishes one function and passes endpoint smoke.
+- Production build `6ab8261291d1127d08001c86` from `main` likewise publishes one route-handler function. `runiis-web.netlify.app`, `main--runiis-web.netlify.app`, and their health endpoints return 200; health reports `production`.
 - Netlify's source scan treated six nonsecret metadata values (application environment, public Cloudinary/Supabase identifiers, and Sentry organization/project identifiers) as matches because they are documented in source. `SECRETS_SCAN_OMIT_KEYS` was set for those nonsecret keys only. Runtime secrets remain scan-protected.
-- Netlify domain binding exists: `runiismty.com` is primary and `www.runiismty.com` is its redirect alias, both pending DNS verification.
-- `runiismty.com` remains Vercel-DNS-managed. Observed nameservers: `ns1.vercel-dns.com`, `ns2.vercel-dns.com`. Exact Netlify-required records were added without altering nameservers or email records: apex `A 75.2.60.5` and `www CNAME runiis-web.netlify.app` (TTL 60). Vercel authoritative lookup returns both exact values. Public recursive lookup still returns legacy apex addresses, so propagation and Netlify TLS remain pending.
+- Netlify domain binding is verified: `runiismty.com` is primary and `www.runiismty.com` redirects to it.
+- `runiismty.com` remains Vercel-DNS-managed. Observed nameservers: `ns1.vercel-dns.com`, `ns2.vercel-dns.com`. Exact Netlify-required records were added without altering nameservers or email records: apex `A 75.2.60.5` and `www CNAME runiis-web.netlify.app` (TTL 60). Public recursive lookup now returns the Netlify apex and `www` CNAME; TLS is valid.
 
 ## Smoke results
 
@@ -60,9 +65,11 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 | Sentry staging test event | ACCEPTED by Sentry ingestion |
 | Cloudinary signed upload + 512x512 WebP transform + cleanup | DEFERRED; required folders exist; documented Free folder-role recovery returned 403 for Contributor and Editor; no asset retained and no key rotated |
 | Brevo/Supabase SMTP OTP | NOT RUN; Brevo onboarding incomplete |
-| Google OAuth redirect/callback | NOT RUN; staging client/provider is configured, but deployment recovery must complete first |
+| Google OAuth redirect/callback | NOT RUN; staging client/provider is configured, but browser-backed sign-in smoke remains pending |
 | Netlify staging root/health smoke | PASS; public permanent URL returns 200 and health returns safe staging JSON |
 | Netlify staging deployment | PASS; branch build deploys one Next route-handler function |
+| Netlify production root/health smoke | PASS; production and `main` URLs return 200 and health returns safe production JSON |
+| Production domain/TLS/www redirect | PASS; apex returns 200 over TLS and `www` returns HTTPS 301 to apex |
 
 ## Deferred and human-required
 
@@ -78,10 +85,8 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 
 ### Deferred technical dependencies
 
-- Netlify production deployment: staging artifact is now verified. `main` must be rebuilt with same adapter and endpoint smoke repeated.
-- DNS propagation/TLS: Vercel authoritative DNS returns the exact Netlify apex and `www` records. Recursive resolvers still cache prior apex values, so Netlify verification and TLS remain pending propagation.
+- Production Supabase migration: current Supabase CLI access returns 401, while the dashboard-only current production credential must not be replaced with the stale master value. Netlify production has the correct project ref and URL but not the publishable/secret values.
 - Google OAuth: staging is configured and provider-enabled. Production client, provider, URLs, and smoke remain pending.
-- Supabase production secret migration: canonical master production key is stale; current dashboard credential passed a safe probe. No production secret was copied into local staging env or hosting.
 - Cloudinary signed upload: provider returned 403 after local env repair. Required avatar folders exist. Documented Contributor and Editor folder-role grants also return 403 on Free; existing credential was not rotated and no test asset was retained.
 - PostHog project label: configured project ID is valid but provider label remains `Default project`, not `RUNIIS WEB`.
 - Sentry: provider shows its included 14-day trial banner. No payment method or upgrade was accepted; verify Free-plan behavior without enabling billing.
@@ -113,8 +118,9 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 - [x] Netlify Free account exists
 - [x] Netlify site and staging deploy
 - [x] Netlify public access
-- [ ] Netlify production deployment and production environment context
-- [ ] Domain verification/TLS; correct DNS records are pending public propagation
+- [x] Netlify production deployment
+- [ ] Netlify production environment context complete; production Supabase and provider values remain pending
+- [x] Domain verification/TLS and HTTPS `www` redirect
 - [ ] Google production OAuth and production Auth URLs
 - [x] Google staging OAuth and staging Auth URLs
 - [ ] Brevo API/SMTP, sender/domain auth, Supabase SMTP, OTP smoke
@@ -129,7 +135,6 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 
 ## Next automatic sequence
 
-1. Deploy `main` with verified Next adapter and run endpoint/TLS smokes.
-2. Create/configure production Google OAuth client/provider and smoke staging login.
+1. Create/configure production Google OAuth client/provider and smoke staging login.
 3. Complete Brevo onboarding, then API/SMTP, sender/domain, Supabase SMTP, and OTP smoke.
 4. Set production runtime destinations, rerun smokes, then complete credential cleanup.
