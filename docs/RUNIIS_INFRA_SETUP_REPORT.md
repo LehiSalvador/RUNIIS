@@ -6,7 +6,7 @@
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`
 - Development/staging branch: `staging`
-- Result: `INFRA_SETUP_INCOMPLETE` — Netlify production/staging deploys, custom-domain TLS, Google staging OAuth/provider, and staging Auth URLs are configured. Production OAuth/Supabase secret migration, email, media smoke, credential cleanup, and remaining smokes are incomplete. No unverified capability is reported as complete.
+- Result: `INFRA_SETUP_INCOMPLETE` — Netlify production/staging deploys, custom-domain TLS, production Supabase runtime migration, Google staging OAuth/provider, and staging Auth URLs are configured. Production OAuth, email, media smoke, credential cleanup, and remaining smokes are incomplete. No unverified capability is reported as complete.
 
 ## Verified
 
@@ -33,7 +33,7 @@ No values are recorded in this report.
 
 | Variable group | Staging `.env.local` | Production hosting |
 | --- | --- | --- |
-| Supabase URL, publishable key, secret key, ref, database URL | yes | deferred: Netlify site exists; production value migration remains pending |
+| Supabase URL, publishable key, secret key, ref, database URL | yes | URL, publishable key, secret key, and ref: yes; database migration URL not configured for runtime |
 | Google OAuth client ID/secret | deferred | deferred |
 | Brevo API/SMTP/webhook/sender | deferred | deferred |
 | Cloudinary cloud/API credentials | yes | deferred: Netlify site exists; production context migration remains pending |
@@ -41,7 +41,7 @@ No values are recorded in this report.
 | PostHog key/host | yes | deferred: Netlify site exists; production context migration remains pending |
 | Sentry DSN/org/project | yes | deferred: Netlify site exists; production context migration remains pending |
 
-Netlify production now also contains generated production-only pass-encryption and cron values, plus Cloudinary, PostHog, and Sentry destinations. Production Supabase publishable/secret and provider credentials remain pending secure retrieval/configuration.
+Netlify production now also contains current production Supabase URL/publishable/server-key/ref values, generated production-only pass-encryption and cron values, plus Cloudinary, PostHog, and Sentry destinations. Provider credentials remain pending configuration.
 
 The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/`, `.local-state/`, provider files, backups, and build output are ignored.
 
@@ -50,6 +50,7 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 - Netlify GitHub App authorization is limited to `LehiSalvador/RUNIIS`. Official CLI recovery created the single Free site `runiis-web` (ID `129537db-751a-4828-9651-3cd93fef4c37`) and linked its source to only that repository.
 - Netlify confirmed `runiis-web` is public. The official Next adapter was required because prior deploys published source/output without a route-handler function. The latest staging build now publishes one function and passes endpoint smoke.
 - Production build `6ab8261291d1127d08001c86` from `main` likewise publishes one route-handler function. `runiis-web.netlify.app`, `main--runiis-web.netlify.app`, and their health endpoints return 200; health reports `production`.
+- Production environment refresh `6ab8297f2fc1f19f64a7da0a` is ready with one route-handler function and repeats the apex health 200 smoke after current Supabase runtime migration.
 - Netlify's source scan treated six nonsecret metadata values (application environment, public Cloudinary/Supabase identifiers, and Sentry organization/project identifiers) as matches because they are documented in source. `SECRETS_SCAN_OMIT_KEYS` was set for those nonsecret keys only. Runtime secrets remain scan-protected.
 - Netlify domain binding is verified: `runiismty.com` is primary and `www.runiismty.com` redirects to it.
 - `runiismty.com` remains Vercel-DNS-managed. Observed nameservers: `ns1.vercel-dns.com`, `ns2.vercel-dns.com`. Exact Netlify-required records were added without altering nameservers or email records: apex `A 75.2.60.5` and `www CNAME runiis-web.netlify.app` (TTL 60). Public recursive lookup now returns the Netlify apex and `www` CNAME; TLS is valid.
@@ -85,7 +86,7 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 
 ### Deferred technical dependencies
 
-- Production Supabase migration: current Supabase CLI access returns 401, while the dashboard-only current production credential must not be replaced with the stale master value. Netlify production has the correct project ref and URL but not the publishable/secret values.
+- Production Supabase migration: current publishable and server keys were migrated directly from the authenticated production dashboard into Netlify production. The stale canonical-master value was not used and no production value was added to `.env.local`.
 - Google OAuth: staging is configured and provider-enabled. Production client, provider, URLs, and smoke remain pending.
 - Cloudinary signed upload: provider returned 403 after local env repair. Required avatar folders exist. Documented Contributor and Editor folder-role grants also return 403 on Free; existing credential was not rotated and no test asset was retained.
 - PostHog project label: configured project ID is valid but provider label remains `Default project`, not `RUNIIS WEB`.
@@ -119,7 +120,7 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 - [x] Netlify site and staging deploy
 - [x] Netlify public access
 - [x] Netlify production deployment
-- [ ] Netlify production environment context complete; production Supabase and provider values remain pending
+- [ ] Netlify production environment context complete; provider values remain pending
 - [x] Domain verification/TLS and HTTPS `www` redirect
 - [ ] Google production OAuth and production Auth URLs
 - [x] Google staging OAuth and staging Auth URLs
