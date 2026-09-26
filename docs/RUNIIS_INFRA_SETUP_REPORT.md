@@ -13,7 +13,7 @@
 | Component | Evidence | Status |
 | --- | --- | --- |
 | Workspace and Git | Exact origin, `main` and `staging` branches; no tracked runtime secret | VERIFIED |
-| Technical bootstrap | Next.js/TypeScript root and `/api/health` exist; local health tests passed during provisioning | VERIFIED |
+| Technical bootstrap | Next.js/TypeScript root and `/api/health` exist; lint, typecheck, 2 local tests, and production build passed | VERIFIED |
 | Canonical specification | `RUNIIS_WEB_SYSTEM_MASTER_SPEC_V2.md` is indexed in `docs/`; Cloudinary is documented as V1 media provider | VERIFIED |
 | Supabase staging | RUNIIS organization and project ref `brxdgvcfykmsqmhsvgxl`; local CLI linked only to staging; safe public/server probes passed | VERIFIED |
 | Supabase production | RUNIIS project ref `mdzhsoeqagtwznybwtuy`; current dashboard server credential probe passed | VERIFIED |
