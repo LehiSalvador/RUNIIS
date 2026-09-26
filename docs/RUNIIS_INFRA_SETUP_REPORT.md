@@ -6,7 +6,7 @@
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`
 - Development/staging branch: `staging`
-- Result: `INFRA_SETUP_INCOMPLETE` — Netlify hosting and Git source are now verified, including a production build. Public access, staging deployment, email, OAuth, production-secret migration, and DNS remain incomplete. No unverified capability is reported as complete.
+- Result: `INFRA_SETUP_INCOMPLETE` — Netlify site, Git source, production build, permanent staging deploy, and authoritative DNS records are verified. Public access, DNS propagation/TLS, email, OAuth, production-secret migration, and remaining smokes are incomplete. No unverified capability is reported as complete.
 
 ## Verified
 
@@ -18,7 +18,7 @@
 | Supabase staging | RUNIIS organization and project ref `brxdgvcfykmsqmhsvgxl`; local CLI linked only to staging; safe public/server probes passed | VERIFIED |
 | Supabase production | RUNIIS project ref `mdzhsoeqagtwznybwtuy`; current dashboard server credential probe passed | VERIFIED |
 | Netlify account | RUNIIS Free team using Gmail RUNIIS; no card or paid upgrade accepted | VERIFIED |
-| Netlify site and Git source | Site `runiis-web`, ID `129537db-751a-4828-9651-3cd93fef4c37`, linked only to `LehiSalvador/RUNIIS`; `main` and `staging` allowed; Next.js production build from `40511d64ac34fac2dab13576fccea6f6fae5ad46` completed ready | VERIFIED (private access pending) |
+| Netlify site and Git source | Site `runiis-web`, ID `129537db-751a-4828-9651-3cd93fef4c37`, linked only to `LehiSalvador/RUNIIS`; `main` and `staging` allowed; production build from `40511d64ac34fac2dab13576fccea6f6fae5ad46` and permanent staging deploy from `83bc1e6b795b8bc6d70ae48a7ca5f22f9b074f67` completed ready | VERIFIED (private access pending) |
 | Cloudinary account | Free account and cloud `ecikmiji`; named runtime key and staging variables stored locally, not in Git | VERIFIED (configuration) |
 | PostHog | RUNIIS organization, US project ID `629435`; Product Analytics with autocapture and heatmaps disabled; `infra_smoke_test` visibly received | VERIFIED |
 | Sentry | US RUNIIS organization and Next.js project `runiis-web`; DSN stored only in ignored staging env; test event accepted by ingestion | VERIFIED |
@@ -43,9 +43,9 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 ## Deploy and DNS
 
 - Netlify GitHub App authorization is limited to `LehiSalvador/RUNIIS`. Official CLI recovery created the single Free site `runiis-web` (ID `129537db-751a-4828-9651-3cd93fef4c37`) and linked its source to only that repository.
-- Production `main` build completed ready with Netlify Next.js detection at `https://runiis-web.netlify.app`. The site currently carries the Netlify team's Private access setting, so anonymous requests redirect to Edge Access and cannot yet pass public smoke.
-- `runiismty.com` remains Vercel-DNS-managed. Observed nameservers: `ns1.vercel-dns.com`, `ns2.vercel-dns.com`. No records, MX, SPF, DKIM, DMARC, nameservers, or domain ownership were changed.
-- Earlier lookup observed apex addresses `216.198.79.1` and `64.29.17.65`; `www` addresses `64.29.17.65` and `216.198.79.65`. This is inspection evidence only, not Netlify configuration.
+- Production `main` build completed ready with Netlify Next.js detection at `https://runiis-web.netlify.app`. The permanent branch-deploy URL is `https://staging--runiis-web.netlify.app`. The site currently carries the Netlify team's Private access setting, so anonymous requests redirect to Edge Access and cannot yet pass public smoke.
+- Netlify domain binding exists: `runiismty.com` is primary and `www.runiismty.com` is its redirect alias, both pending DNS verification.
+- `runiismty.com` remains Vercel-DNS-managed. Observed nameservers: `ns1.vercel-dns.com`, `ns2.vercel-dns.com`. Exact Netlify-required records were added without altering nameservers or email records: apex `A 75.2.60.5` and `www CNAME runiis-web.netlify.app` (TTL 60). Vercel authoritative lookup returns both exact values. Public recursive lookup still returns legacy apex addresses, so propagation and Netlify TLS remain pending.
 
 ## Smoke results
 
@@ -61,7 +61,7 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 | Google OAuth redirect/callback | NOT RUN; exact Netlify staging URL unavailable |
 | Netlify production build | PASS; ready from `main` commit `40511d64ac34fac2dab13576fccea6f6fae5ad46` |
 | Netlify public root/health smoke | BLOCKED; site is still marked Private in Netlify |
-| Netlify staging deployment | NOT RUN; pending this staging documentation push |
+| Netlify staging deployment | PASS; ready at `https://staging--runiis-web.netlify.app` from staging commit `83bc1e6b795b8bc6d70ae48a7ca5f22f9b074f67` |
 
 ## Deferred and human-required
 
@@ -77,8 +77,9 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 
 ### Deferred technical dependencies
 
-- Netlify public access: the site is created and Git-connected, but Netlify marks it Private. Making this sole RUNIIS site public is required before public smoke, staging URL, custom-domain traffic, and DNS validation.
-- Google OAuth: Google Cloud project `runiis-web` exists, but OAuth clients must use exact Supabase callbacks plus stable staging/production origins.
+- Netlify public access: the site is created, Git-connected, and deployed, but Netlify marks it Private. Making this sole RUNIIS site public is required before public smoke and custom-domain traffic.
+- DNS propagation/TLS: Vercel authoritative DNS returns the exact Netlify apex and `www` records. Recursive resolvers still cache prior apex values, so Netlify verification and TLS remain pending propagation.
+- Google OAuth: Google Cloud project `runiis-web` is verified under the RUNIIS account. Auth Platform is prepared but clients must be created using exact Supabase callbacks plus stable staging/production origins.
 - Supabase production secret migration: canonical master production key is stale; current dashboard credential passed a safe probe. No production secret was copied into local staging env or hosting.
 - Cloudinary signed upload: provider returned 403 after local env repair. The existing runtime key has the direct `Media Library User` role, but Cloudinary still denies its asset `create` action. Existing credential was not rotated; the exact capability needs adjustment before repeat.
 - PostHog project label: configured project ID is valid but provider label remains `Default project`, not `RUNIIS WEB`.
@@ -110,8 +111,9 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 - [x] Staging CLI link is staging-only
 - [x] Netlify Free account exists
 - [x] Netlify site and production build
-- [ ] Netlify public access, staging deploy, and environment contexts
-- [ ] Domain connected to Netlify or pending correct Netlify DNS records
+- [ ] Netlify public access and production environment context
+- [x] Staging deploy and staging environment context
+- [ ] Domain verification/TLS; correct DNS records are pending public propagation
 - [ ] Google OAuth clients and Supabase Auth URLs
 - [ ] Brevo API/SMTP, sender/domain auth, Supabase SMTP, OTP smoke
 - [x] Cloudinary Free account and staging variable destination
@@ -125,7 +127,7 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 
 ## Next automatic sequence
 
-1. Complete Brevo postal-address step, then continue SMTP and OTP smoke.
-2. Finish Netlify repo import for only `LehiSalvador/RUNIIS`, create site, deploy `staging`, then configure `main` production and exact Netlify DNS.
-3. Register Google OAuth clients using resulting origins and Supabase callback URLs.
-4. Set Netlify environment contexts, rerun production smokes, then complete credential cleanup.
+1. Make only `runiis-web` public, then run staging/production endpoint and TLS smokes.
+2. Complete Brevo postal-address step, then continue SMTP and OTP smoke.
+3. Register Google OAuth clients using stable staging/production origins and exact Supabase callbacks.
+4. Set production environment context, rerun production smokes, then complete credential cleanup.
