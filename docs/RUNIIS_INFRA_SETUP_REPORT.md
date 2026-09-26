@@ -6,7 +6,7 @@
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`
 - Development/staging branch: `staging`
-- Result: `INFRA_SETUP_INCOMPLETE` — Netlify production/staging deploys, custom-domain TLS, production Supabase runtime migration, Google staging OAuth/provider, and staging Auth URLs are configured. Production OAuth, email, media smoke, credential cleanup, and remaining smokes are incomplete. No unverified capability is reported as complete.
+- Result: `INFRA_SETUP_INCOMPLETE` — Netlify production/staging deploys, custom-domain TLS, production Supabase runtime migration, and Google OAuth production/provider/URLs are configured. Staging Google provider has a verified missing-secret defect; Brevo key creation is gated by phone verification; Cloudinary signed upload is gated by missing `create` permission. Credential cleanup and dependent smokes remain incomplete. No unverified capability is reported as complete.
 
 ## Verified
 
@@ -22,6 +22,7 @@
 | Netlify deployments | Staging and production builds each publish one Next.js route-handler function; root and health smokes pass | VERIFIED |
 | Production domain | `https://runiismty.com` serves valid TLS; `https://www.runiismty.com` returns HTTPS 301 to apex | VERIFIED |
 | Google OAuth staging | Auth Platform RUNIIS configured; `RUNIIS Staging` Web client uses permanent staging origin and exact staging Supabase callback; provider enabled with staging Site URL and allowlist | VERIFIED |
+| Google OAuth production | `RUNIIS Production` Web client uses apex origin and exact production callback; Supabase production provider is enabled; Site URL is `https://runiismty.com` with explicit apex, permanent staging, and localhost redirect allowlist | VERIFIED |
 | Cloudinary account | Free account and cloud `ecikmiji`; named runtime key and staging variables stored locally, not in Git | VERIFIED (configuration) |
 | PostHog | RUNIIS organization, US project ID `629435`; Product Analytics with autocapture and heatmaps disabled; `infra_smoke_test` visibly received | VERIFIED |
 | Sentry | US RUNIIS organization and Next.js project `runiis-web`; DSN stored only in ignored staging env; test event accepted by ingestion | VERIFIED |
@@ -34,14 +35,14 @@ No values are recorded in this report.
 | Variable group | Staging `.env.local` | Production hosting |
 | --- | --- | --- |
 | Supabase URL, publishable key, secret key, ref, database URL | yes | URL, publishable key, secret key, and ref: yes; database migration URL not configured for runtime |
-| Google OAuth client ID/secret | deferred | deferred |
+| Google OAuth client ID/secret | provider client ID is set; its secret must be recovered/replaced | yes; both values are secure in Netlify production |
 | Brevo API/SMTP/webhook/sender | deferred | deferred |
-| Cloudinary cloud/API credentials | yes | deferred: Netlify site exists; production context migration remains pending |
-| App encryption and cron secrets | yes, unique staging values | deferred: Netlify site exists; production context migration remains pending |
-| PostHog key/host | yes | deferred: Netlify site exists; production context migration remains pending |
-| Sentry DSN/org/project | yes | deferred: Netlify site exists; production context migration remains pending |
+| Cloudinary cloud/API credentials | yes | yes |
+| App encryption and cron secrets | yes, unique staging values | yes, distinct production values |
+| PostHog key/host | yes | yes |
+| Sentry DSN/org/project | yes | yes |
 
-Netlify production now also contains current production Supabase URL/publishable/server-key/ref values, generated production-only pass-encryption and cron values, plus Cloudinary, PostHog, and Sentry destinations. Provider credentials remain pending configuration.
+Netlify production contains current production Supabase URL/publishable/server-key/ref values, Google production credentials, generated production-only pass-encryption and cron values, plus Cloudinary, PostHog, and Sentry destinations. Brevo destinations remain pending its account gate.
 
 The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/`, `.local-state/`, provider files, backups, and build output are ignored.
 
@@ -49,8 +50,7 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 
 - Netlify GitHub App authorization is limited to `LehiSalvador/RUNIIS`. Official CLI recovery created the single Free site `runiis-web` (ID `129537db-751a-4828-9651-3cd93fef4c37`) and linked its source to only that repository.
 - Netlify confirmed `runiis-web` is public. The official Next adapter was required because prior deploys published source/output without a route-handler function. The latest staging build now publishes one function and passes endpoint smoke.
-- Production build `6ab8261291d1127d08001c86` from `main` likewise publishes one route-handler function. `runiis-web.netlify.app`, `main--runiis-web.netlify.app`, and their health endpoints return 200; health reports `production`.
-- Production environment refresh `6ab8297f2fc1f19f64a7da0a` is ready with one route-handler function and repeats the apex health 200 smoke after current Supabase runtime migration.
+- Remote production build `6ab84ea98a010da8b8a15c76` from commit `118a036` published successfully with one route-handler function. `runiis-web.netlify.app`, `main--runiis-web.netlify.app`, and their health endpoints return 200; health reports `production`.
 - Netlify's source scan treated six nonsecret metadata values (application environment, public Cloudinary/Supabase identifiers, and Sentry organization/project identifiers) as matches because they are documented in source. `SECRETS_SCAN_OMIT_KEYS` was set for those nonsecret keys only. Runtime secrets remain scan-protected.
 - Netlify domain binding is verified: `runiismty.com` is primary and `www.runiismty.com` redirects to it.
 - `runiismty.com` remains Vercel-DNS-managed. Observed nameservers: `ns1.vercel-dns.com`, `ns2.vercel-dns.com`. Exact Netlify-required records were added without altering nameservers or email records: apex `A 75.2.60.5` and `www CNAME runiis-web.netlify.app` (TTL 60). Public recursive lookup now returns the Netlify apex and `www` CNAME; TLS is valid.
@@ -64,9 +64,9 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 | Supabase production server safe probe | PASS |
 | PostHog `infra_smoke_test`, `environment=staging` | PASS; visible in activity |
 | Sentry staging test event | ACCEPTED by Sentry ingestion |
-| Cloudinary signed upload + 512x512 WebP transform + cleanup | DEFERRED; required folders exist; documented Free folder-role recovery returned 403 for Contributor and Editor; no asset retained and no key rotated |
-| Brevo/Supabase SMTP OTP | NOT RUN; Brevo onboarding incomplete |
-| Google OAuth redirect/callback | NOT RUN; staging client/provider is configured, but browser-backed sign-in smoke remains pending |
+| Cloudinary signed upload + 512x512 WebP transform + cleanup | DEFERRED; authenticated Admin read returns 200, while independent signed upload returns 403 because current key lacks `create`; no asset retained and no key rotated |
+| Brevo/Supabase SMTP OTP | NOT RUN; Brevo blocks API/SMTP key creation behind one-time phone verification |
+| Google OAuth redirect/callback | Production configuration verified. Staging safe provider probe returns 400 `Unsupported provider: missing OAuth secret`; full browser smoke remains blocked until safe secret recovery/replacement |
 | Netlify staging root/health smoke | PASS; public permanent URL returns 200 and health returns safe staging JSON |
 | Netlify staging deployment | PASS; branch build deploys one Next route-handler function |
 | Netlify production root/health smoke | PASS; production and `main` URLs return 200 and health returns safe production JSON |
@@ -77,18 +77,18 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 ### HUMAN_REQUIRED-001
 
 - Provider: Brevo
-- URL/tab: `https://onboarding.brevo.com/account/register/complete-profile`
-- Reason: Brevo requires city and country in addition to the authorized address and postal code; it did not autocomplete either value.
-- Exact action: Provide the authorized RUNIIS city and country for the already-filled address, then select the Free plan.
-- Expected result: Brevo dashboard opens without a paid plan.
-- Already completed: Gmail-based account registration, RUNIIS profile details, address, and postal code.
-- Next automatic step: Create separated API/SMTP credentials, configure sender/domain DNS, set Supabase custom SMTP, and run OTP smoke.
+- URL/tab: `https://app.brevo.com/settings/keys/api`
+- Reason: Brevo requires one-time phone verification before it unlocks first API/SMTP-key creation. No authorized RUNIIS phone value is available to enter, and no value will be inferred from a different service.
+- Exact action: In the open Brevo modal, enter an authorized RUNIIS phone number and complete only Brevo's one-time verification. Do not add a card or select a paid plan.
+- Expected result: API and SMTP key creation controls unlock.
+- Already completed: Brevo Free onboarding, Gmail email verification, exact Vercel DNS records, and `runiismty.com` sender-domain authentication.
+- Next automatic step: Create separately named API and SMTP keys, store them only in approved secret destinations, configure Custom SMTP for staging/production, then run staging OTP smoke.
 
 ### Deferred technical dependencies
 
 - Production Supabase migration: current publishable and server keys were migrated directly from the authenticated production dashboard into Netlify production. The stale canonical-master value was not used and no production value was added to `.env.local`.
-- Google OAuth: staging is configured and provider-enabled. Production client, provider, URLs, and smoke remain pending.
-- Cloudinary signed upload: provider returned 403 after local env repair. Required avatar folders exist. Documented Contributor and Editor folder-role grants also return 403 on Free; existing credential was not rotated and no test asset was retained.
+- Google OAuth: production client, provider, and exact URL configuration are verified. Staging's existing provider lacks an OAuth secret: a safe authorize probe returns 400 `Unsupported provider: missing OAuth secret`. The original client secret is unavailable after its one-time reveal; replacement must be created or recovered securely before full staging sign-in smoke.
+- Cloudinary signed upload: authenticated Admin read returns 200, but a direct independently signed staging upload returns 403 `Request forbidden due to missing permissions (actions=[create])`. Root cause is current key permission, not signature, clock, or environment formatting. Required avatar folders exist; no asset was created and no key was rotated.
 - PostHog project label: configured project ID is valid but provider label remains `Default project`, not `RUNIIS WEB`.
 - Sentry: provider shows its included 14-day trial banner. No payment method or upgrade was accepted; verify Free-plan behavior without enabling billing.
 - SalvaOps: no direct connector/index surface is available to this execution environment. No unsupported integration was fabricated.
@@ -120,10 +120,10 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 - [x] Netlify site and staging deploy
 - [x] Netlify public access
 - [x] Netlify production deployment
-- [ ] Netlify production environment context complete; provider values remain pending
+- [ ] Netlify production environment context complete; Brevo provider values remain pending
 - [x] Domain verification/TLS and HTTPS `www` redirect
-- [ ] Google production OAuth and production Auth URLs
-- [x] Google staging OAuth and staging Auth URLs
+- [x] Google production OAuth and production Auth URLs
+- [ ] Google staging OAuth secret and end-to-end smoke
 - [ ] Brevo API/SMTP, sender/domain auth, Supabase SMTP, OTP smoke
 - [x] Cloudinary Free account and staging variable destination
 - [ ] Cloudinary signed-upload smoke
@@ -136,6 +136,7 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 
 ## Next automatic sequence
 
-1. Create/configure production Google OAuth client/provider and smoke staging login.
-3. Complete Brevo onboarding, then API/SMTP, sender/domain, Supabase SMTP, and OTP smoke.
-4. Set production runtime destinations, rerun smokes, then complete credential cleanup.
+1. Recover or create a safely stored staging Google OAuth secret, set it in Supabase staging, then run sign-in smoke.
+2. Complete the single Brevo phone gate, then API/SMTP, sender, Supabase SMTP, and OTP smoke.
+3. Grant only Cloudinary `create` permission to the existing RUNIIS runtime key, rerun signed-upload/transform/cleanup smoke.
+4. Complete credential cleanup only after every required destination and smoke is verified.
