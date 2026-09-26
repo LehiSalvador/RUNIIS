@@ -9,6 +9,7 @@ RUNIIS_CREDENCIALES_MAESTRAS
 node_modules/
 .next/
 .netlify/
+.netlify-build-cache-*/
 .vercel/
 supabase/.temp/
 coverage/
