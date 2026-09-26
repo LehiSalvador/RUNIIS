@@ -6,6 +6,7 @@
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`
 - Development/staging branch: `staging`
+- Safe source commit verified in this pass: `f9cdc57`
 - Result: `INFRA_SETUP_INCOMPLETE` — Netlify production/staging deploys, custom-domain TLS, production Supabase runtime migration, and Google OAuth production/provider/URLs are configured. Staging Google provider has a verified missing-secret defect; Brevo key creation is gated by phone verification; Cloudinary signed upload is gated by missing `create` permission. Credential cleanup and dependent smokes remain incomplete. No unverified capability is reported as complete.
 
 ## Verified
@@ -60,6 +61,7 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 | Smoke | Result |
 | --- | --- |
 | Local `/` and `/api/health` | PASS |
+| Local quality gates | PASS: lint, typecheck, 2 tests, and production build rerun in final convergence |
 | Supabase staging public/server safe probe | PASS |
 | Supabase production server safe probe | PASS |
 | PostHog `infra_smoke_test`, `environment=staging` | PASS; visible in activity |
