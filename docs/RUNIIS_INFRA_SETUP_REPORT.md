@@ -6,7 +6,7 @@
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`
 - Development/staging branch: `staging`
-- Result: `INFRA_SETUP_INCOMPLETE` — Netlify site, Git source, production build, permanent staging deploy, and authoritative DNS records are verified. Public access, DNS propagation/TLS, email, OAuth, production-secret migration, and remaining smokes are incomplete. No unverified capability is reported as complete.
+- Result: `INFRA_SETUP_INCOMPLETE` — Netlify site is public and Git-connected; Google staging OAuth/provider and staging Auth URLs are configured. Hosting artifact recovery, production OAuth/secrets, email, DNS/TLS, media smoke, credential cleanup, and remaining smokes are incomplete. No unverified capability is reported as complete.
 
 ## Verified
 
@@ -18,7 +18,8 @@
 | Supabase staging | RUNIIS organization and project ref `brxdgvcfykmsqmhsvgxl`; local CLI linked only to staging; safe public/server probes passed | VERIFIED |
 | Supabase production | RUNIIS project ref `mdzhsoeqagtwznybwtuy`; current dashboard server credential probe passed | VERIFIED |
 | Netlify account | RUNIIS Free team using Gmail RUNIIS; no card or paid upgrade accepted | VERIFIED |
-| Netlify site and Git source | Site `runiis-web`, ID `129537db-751a-4828-9651-3cd93fef4c37`, linked only to `LehiSalvador/RUNIIS`; `main` and `staging` allowed; production build from `40511d64ac34fac2dab13576fccea6f6fae5ad46` and permanent staging deploy from `83bc1e6b795b8bc6d70ae48a7ca5f22f9b074f67` completed ready | VERIFIED (private access pending) |
+| Netlify site and Git source | Public site `runiis-web`, ID `129537db-751a-4828-9651-3cd93fef4c37`, linked only to `LehiSalvador/RUNIIS`; `main` and `staging` allowed | VERIFIED |
+| Google OAuth staging | Auth Platform RUNIIS configured; `RUNIIS Staging` Web client uses permanent staging origin and exact staging Supabase callback; provider enabled with staging Site URL and allowlist | VERIFIED |
 | Cloudinary account | Free account and cloud `ecikmiji`; named runtime key and staging variables stored locally, not in Git | VERIFIED (configuration) |
 | PostHog | RUNIIS organization, US project ID `629435`; Product Analytics with autocapture and heatmaps disabled; `infra_smoke_test` visibly received | VERIFIED |
 | Sentry | US RUNIIS organization and Next.js project `runiis-web`; DSN stored only in ignored staging env; test event accepted by ingestion | VERIFIED |
@@ -43,7 +44,8 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 ## Deploy and DNS
 
 - Netlify GitHub App authorization is limited to `LehiSalvador/RUNIIS`. Official CLI recovery created the single Free site `runiis-web` (ID `129537db-751a-4828-9651-3cd93fef4c37`) and linked its source to only that repository.
-- Production `main` build completed ready with Netlify Next.js detection at `https://runiis-web.netlify.app`. The permanent branch-deploy URL is `https://staging--runiis-web.netlify.app`. The site currently carries the Netlify team's Private access setting, so anonymous requests redirect to Edge Access and cannot yet pass public smoke.
+- Netlify confirmed `runiis-web` is public. Earlier manual deploys had no files/functions, so root/health smoke returned 404; the permanent branch URL returned 401 from its earlier artifact. Git-triggered rebuild recovery is in progress.
+- Netlify's source scan treated six nonsecret metadata values (application environment, public Cloudinary/Supabase identifiers, and Sentry organization/project identifiers) as matches because they are documented in source. `SECRETS_SCAN_OMIT_KEYS` was set for those nonsecret keys only. Runtime secrets remain scan-protected.
 - Netlify domain binding exists: `runiismty.com` is primary and `www.runiismty.com` is its redirect alias, both pending DNS verification.
 - `runiismty.com` remains Vercel-DNS-managed. Observed nameservers: `ns1.vercel-dns.com`, `ns2.vercel-dns.com`. Exact Netlify-required records were added without altering nameservers or email records: apex `A 75.2.60.5` and `www CNAME runiis-web.netlify.app` (TTL 60). Vercel authoritative lookup returns both exact values. Public recursive lookup still returns legacy apex addresses, so propagation and Netlify TLS remain pending.
 
@@ -56,12 +58,11 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 | Supabase production server safe probe | PASS |
 | PostHog `infra_smoke_test`, `environment=staging` | PASS; visible in activity |
 | Sentry staging test event | ACCEPTED by Sentry ingestion |
-| Cloudinary signed upload + 512x512 WebP transform + cleanup | DEFERRED; first attempt found malformed local env formatting, repaired; second provider attempt returned 403 and created no asset |
+| Cloudinary signed upload + 512x512 WebP transform + cleanup | DEFERRED; required folders exist; documented Free folder-role recovery returned 403 for Contributor and Editor; no asset retained and no key rotated |
 | Brevo/Supabase SMTP OTP | NOT RUN; Brevo onboarding incomplete |
-| Google OAuth redirect/callback | NOT RUN; exact Netlify staging URL unavailable |
-| Netlify production build | PASS; ready from `main` commit `40511d64ac34fac2dab13576fccea6f6fae5ad46` |
-| Netlify public root/health smoke | BLOCKED; site is still marked Private in Netlify |
-| Netlify staging deployment | PASS; ready at `https://staging--runiis-web.netlify.app` from staging commit `83bc1e6b795b8bc6d70ae48a7ca5f22f9b074f67` |
+| Google OAuth redirect/callback | NOT RUN; staging client/provider is configured, but deployment recovery must complete first |
+| Netlify public root/health smoke | DEFERRED; public setting verified, but earlier artifacts are empty/protected and Git rebuild recovery is pending |
+| Netlify staging deployment | DEFERRED; permanent URL exists; latest Git rebuild failed only on false-positive metadata scanning and was retried after narrow omission configuration |
 
 ## Deferred and human-required
 
@@ -77,11 +78,11 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 
 ### Deferred technical dependencies
 
-- Netlify public access: the site is created, Git-connected, and deployed, but Netlify marks it Private. Making this sole RUNIIS site public is required before public smoke and custom-domain traffic.
+- Netlify deployment recovery: prior manual artifacts contain no files/functions. The site is public and Git-connected. The current staging rebuild needs completion after narrow nonsecret scan omissions; then main must be rebuilt and endpoint smoke repeated.
 - DNS propagation/TLS: Vercel authoritative DNS returns the exact Netlify apex and `www` records. Recursive resolvers still cache prior apex values, so Netlify verification and TLS remain pending propagation.
-- Google OAuth: Google Cloud project `runiis-web` is verified under the RUNIIS account. Auth Platform is prepared but clients must be created using exact Supabase callbacks plus stable staging/production origins.
+- Google OAuth: staging is configured and provider-enabled. Production client, provider, URLs, and smoke remain pending.
 - Supabase production secret migration: canonical master production key is stale; current dashboard credential passed a safe probe. No production secret was copied into local staging env or hosting.
-- Cloudinary signed upload: provider returned 403 after local env repair. The existing runtime key has the direct `Media Library User` role, but Cloudinary still denies its asset `create` action. Existing credential was not rotated; the exact capability needs adjustment before repeat.
+- Cloudinary signed upload: provider returned 403 after local env repair. Required avatar folders exist. Documented Contributor and Editor folder-role grants also return 403 on Free; existing credential was not rotated and no test asset was retained.
 - PostHog project label: configured project ID is valid but provider label remains `Default project`, not `RUNIIS WEB`.
 - Sentry: provider shows its included 14-day trial banner. No payment method or upgrade was accepted; verify Free-plan behavior without enabling billing.
 - SalvaOps: no direct connector/index surface is available to this execution environment. No unsupported integration was fabricated.
@@ -89,12 +90,12 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 ### HUMAN_REQUIRED-002
 
 - Provider: Netlify
-- URL/tab: `https://app.netlify.com/projects/runiis-web/overview`
-- Reason: the Free team has marked this otherwise verified RUNIIS site Private.
-- Exact action: use the visible **Make public** button for `runiis-web`.
-- Expected result: public `runiis-web.netlify.app` reachability for smoke and domain traffic.
-- Already completed: site creation, local link, restricted GitHub binding, branch binding, and ready production build.
-- Next automatic step: verify public endpoints, deploy `staging`, then attach the production domain and exact DNS records.
+- URL/tab: `https://app.netlify.com/teams/runiis/projects`
+- Reason: an interrupted local CLI recovery created the empty duplicate project `deft-trifle-b68872` while the correct `runiis-web` link was temporarily unavailable. The provisioning safety policy forbids deleting cloud projects without a direct action-time authorization.
+- Exact action: authorize deletion of that specific empty duplicate only.
+- Expected result: only `runiis-web` remains in the RUNIIS Netlify team.
+- Already completed: original `runiis-web` was restored as the local link; it remains the sole authorized Git-connected site.
+- Next automatic step: delete the duplicate, verify project list, then continue deployment smoke.
 
 ## Credential handling
 
@@ -111,10 +112,11 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 - [x] Staging CLI link is staging-only
 - [x] Netlify Free account exists
 - [x] Netlify site and production build
-- [ ] Netlify public access and production environment context
-- [x] Staging deploy and staging environment context
+- [x] Netlify public access
+- [ ] Netlify staging/production deployment artifact and production environment context
 - [ ] Domain verification/TLS; correct DNS records are pending public propagation
-- [ ] Google OAuth clients and Supabase Auth URLs
+- [ ] Google production OAuth and production Auth URLs
+- [x] Google staging OAuth and staging Auth URLs
 - [ ] Brevo API/SMTP, sender/domain auth, Supabase SMTP, OTP smoke
 - [x] Cloudinary Free account and staging variable destination
 - [ ] Cloudinary signed-upload smoke
@@ -127,7 +129,7 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 
 ## Next automatic sequence
 
-1. Make only `runiis-web` public, then run staging/production endpoint and TLS smokes.
-2. Complete Brevo postal-address step, then continue SMTP and OTP smoke.
-3. Register Google OAuth clients using stable staging/production origins and exact Supabase callbacks.
-4. Set production environment context, rerun production smokes, then complete credential cleanup.
+1. Complete Netlify staging artifact recovery, then deploy `main` and run endpoint/TLS smokes.
+2. Create/configure production Google OAuth client/provider and smoke staging login.
+3. Complete Brevo onboarding, then API/SMTP, sender/domain, Supabase SMTP, and OTP smoke.
+4. Set production runtime destinations, rerun smokes, then complete credential cleanup.
