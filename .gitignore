@@ -10,6 +10,7 @@ node_modules/
 .next/
 .netlify/
 .vercel/
+supabase/.temp/
 coverage/
 playwright-report/
 test-results/
