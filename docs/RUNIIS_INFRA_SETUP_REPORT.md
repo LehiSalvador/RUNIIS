@@ -2,7 +2,7 @@
 
 - Run ID: `aa5dac8b-3818-4a29-ad89-ae569b91b3b2`
 - Updated: 2026-09-27 (America/Mexico_City)
-- Result: `INFRA_SETUP_PARTIAL` — Vercel project-scoped handoff token must be rotated after one-time dashboard reveal was exposed to automation output.
+- Result: `INFRA_SETUP_COMPLETE`
 - Canonical workspace: `C:\PROYECTOS_CLAUDE\RUNIIIS WEB`
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`; staging branch: `staging`
@@ -34,10 +34,10 @@ No credential value is stored in Git, docs, reports, `.env.example`, or this rep
 | Provider | Token | Resource scope / permissions | Expiration | Private variable | Status |
 | --- | --- | --- | --- | --- | --- |
 | GitHub | `RUNIIS SalvaOps` | Only `LehiSalvador/RUNIIS`; Metadata read, Contents read/write | No expiration | `GITHUB_ACCESS_TOKEN` | VERIFIED |
-| Vercel | `RUNIIS SalvaOps` | Project only: `runiis-web` (`prj_8cMyzcQpzyJUd286AQ5DmpN2fHZE`) | No expiration | `VERCEL_ACCESS_TOKEN` | ROTATION_REQUIRED |
+| Vercel | `RUNIIS SalvaOps` | Project only: `runiis-web` (`prj_8cMyzcQpzyJUd286AQ5DmpN2fHZE`) | No expiration | `VERCEL_ACCESS_TOKEN` | VERIFIED |
 | Supabase | `RUNIIS SalvaOps` | RUNIIS only; `runiis-web-staging` and `runiis-web-prod`; Project Settings and Auth Config read/write | 2027-09-27 | `SUPABASE_ACCESS_TOKEN` | VERIFIED |
 
-GitHub token authenticated as approved owner and accessed only RUNIIS. Supabase token read approved staging and production project plus Auth configuration endpoints. The Vercel project-scoped token was verified before its one-time dashboard reveal was exposed to automation output; it is not approved for handoff and requires revocation plus rotation. Prior broad Vercel token and legacy Supabase token remain preserved because external dependency status cannot be disproven.
+GitHub token authenticated as approved owner and accessed only RUNIIS. Supabase token read approved staging and production project plus Auth configuration endpoints. Vercel project-scoped replacement accessed exact RUNIIS project and was denied access to unrelated project. Earlier exposed replacement was revoked before new value was captured. Prior broad Vercel token and legacy Supabase token remain preserved because external dependency status cannot be disproven.
 
 ## Vercel resource binding
 
@@ -86,12 +86,4 @@ SalvaOps internal connector automation is not available on this machine. Owner c
 - Vercel project: `runiis-web` / `prj_8cMyzcQpzyJUd286AQ5DmpN2fHZE`
 - Supabase staging: `brxdgvcfykmsqmhsvgxl`; production: `mdzhsoeqagtwznybwtuy`
 
-### HUMAN_REQUIRED-001
-
-- Provider: Vercel.
-- Task: revoke exposed project-scoped `RUNIIS SalvaOps` token, then create and securely capture its replacement.
-- Current page: `https://vercel.com/account/settings/tokens`.
-- Why: credential revocation and a new persistent credential require action-time confirmation.
-- Exact action: confirm token revocation and replacement creation when requested.
-- Already complete: Vercel project, Git binding, Netlify authority, GitHub token, Supabase token, final quality gates, and all remote smokes.
-- Next automatic step: store replacement only in private handoff source, verify project-only access, clear clipboard, update report, and declare completion.
+This is `OWNER_MANUAL_BINDING_READY`, not infrastructure blocker.
