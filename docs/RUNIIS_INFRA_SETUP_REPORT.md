@@ -1,83 +1,89 @@
 # RUNIIS infrastructure setup report
 
 - Run ID: `aa5dac8b-3818-4a29-ad89-ae569b91b3b2`
-- Updated: 2026-09-26 (America/Mexico_City)
+- Updated: 2026-09-27 (America/Mexico_City)
+- Result: `INFRA_SETUP_COMPLETE`
 - Canonical workspace: `C:\PROYECTOS_CLAUDE\RUNIIIS WEB`
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`; staging branch: `staging`
-- Final handoff commit: commit containing this report on `main` (resolve with `git rev-parse HEAD` at handoff)
-- Result: `INFRA_SETUP_PARTIAL` — infrastructure, runtime, hosting, and independent final checks verified. Scoped Supabase handoff-token creation remains deferred after three dashboard submission routes produced neither a token nor a provider error. No secret value appears here.
+
+## Workspace and Git
+
+| Item | Evidence | Status |
+| --- | --- | --- |
+| Canonical workspace | `C:\PROYECTOS_CLAUDE\RUNIIIS WEB` is working tree and SalvaOps-preserved workspace | VERIFIED |
+| Accidental workspace | `C:\PROYECTOS_CLAUDE\RUNIIS WEB` removed after final unique-file comparison | VERIFIED |
+| Correction backup | `C:\Users\lehi1\OneDrive\Documentos\RUNIIS_WORKSPACE_CORRECTION_BACKUP_20260926-221732` remains outside Git | VERIFIED |
+| Git repository | Origin is `LehiSalvador/RUNIIS`; `main` and `staging` exist | VERIFIED |
+| Secret scans | Current tree and all reachable history contain no real secret. Sole gitleaks match is empty `.env.example` placeholder `GOOGLE_CLIENT_SECRET=` | VERIFIED |
+
+## Private credential sources
+
+No credential value is stored in Git, docs, reports, `.env.example`, or this report.
+
+| Source | Purpose | Status |
+| --- | --- | --- |
+| `C:\Users\lehi1\OneDrive\Documentos\RUNIIS_AGENT_SECRETS.env` | Non-SalvaOps provider credentials and application secrets only | VERIFIED |
+| `C:\Users\lehi1\OneDrive\Documentos\RUNIIS_SALVAOPS_PROVIDER_ACCESS.env` | Owner manual handoff for GitHub, Vercel, and Supabase access tokens only | VERIFIED |
+| Netlify secure environment contexts | Individual runtime secrets only; production Supabase remains separate from local staging configuration | VERIFIED |
+
+`RUNIIS_AGENT_SECRETS.env` excludes `GITHUB_ACCESS_TOKEN`, `VERCEL_ACCESS_TOKEN`, and `SUPABASE_ACCESS_TOKEN`. The SalvaOps handoff source contains exactly those three variables.
+
+### SalvaOps manual handoff
+
+| Provider | Token | Resource scope / permissions | Expiration | Private variable | Status |
+| --- | --- | --- | --- | --- | --- |
+| GitHub | `RUNIIS SalvaOps` | Only `LehiSalvador/RUNIIS`; Metadata read, Contents read/write | No expiration | `GITHUB_ACCESS_TOKEN` | VERIFIED |
+| Vercel | `RUNIIS SalvaOps` | Project only: `runiis-web` (`prj_8cMyzcQpzyJUd286AQ5DmpN2fHZE`) | No expiration | `VERCEL_ACCESS_TOKEN` | VERIFIED |
+| Supabase | `RUNIIS SalvaOps` | RUNIIS only; `runiis-web-staging` and `runiis-web-prod`; Project Settings and Auth Config read/write | 2027-09-27 | `SUPABASE_ACCESS_TOKEN` | VERIFIED |
+
+GitHub token authenticated as approved owner and accessed only RUNIIS. Vercel token accessed exact RUNIIS project and was denied access to unrelated project. Supabase token read approved staging and production project plus Auth configuration endpoints. Prior broad Vercel token and legacy Supabase token remain preserved because external dependency status cannot be disproven; new scoped handoff tokens are operational.
+
+## Vercel resource binding
+
+| Item | Value |
+| --- | --- |
+| Project role | SalvaOps resource binding / Git integration resource |
+| Project | `runiis-web` |
+| Project ID | `prj_8cMyzcQpzyJUd286AQ5DmpN2fHZE` |
+| Team/account | `lehisalvadors-projects` / `lehisalvador` |
+| Git repository | `LehiSalvador/RUNIIS` |
+| Production branch | `main` |
+| Generated technical URL | `https://runiis-web.vercel.app` |
+| Production hosting authority | Netlify |
+| Custom-domain authority | Existing Netlify deployment and DNS configuration |
+
+Vercel Project has no `runiismty.com` domain assignment and received no copied Netlify runtime secrets.
 
 ## Verified infrastructure
 
 | Component | Evidence | Status |
 | --- | --- | --- |
-| Git repository | `origin` is `LehiSalvador/RUNIIS`; `main` and `staging` exist; tracked source migrated into canonical workspace | VERIFIED |
-| Git secret history | `gitleaks --all --redact` scanned 19 commits. Sole finding: empty `.env.example` `GOOGLE_CLIENT_SECRET=` placeholder | VERIFIED |
-| Bootstrap quality | pnpm frozen install, lint, typecheck, 2 tests, production build pass from canonical workspace | VERIFIED |
 | Supabase staging | RUNIIS ref `brxdgvcfykmsqmhsvgxl`; local CLI remains staging-only | VERIFIED |
 | Supabase production | RUNIIS ref `mdzhsoeqagtwznybwtuy`; safe runtime probe passed | VERIFIED |
-| Netlify | Existing Free site `runiis-web` (`129537db-751a-4828-9651-3cd93fef4c37`) remains linked only to `LehiSalvador/RUNIIS` | VERIFIED |
-| Deploys and domain | Permanent staging and production root/health return 200; apex TLS valid; `www` HTTPS redirects to apex | VERIFIED |
-| Google OAuth | Existing staging/production clients retained. Production replacement secret stored privately, installed in Netlify production, saved in enabled Supabase provider | VERIFIED_CONFIGURATION |
-| Brevo | Free onboarding, domain auth, SMTP staging/production, staging OTP delivery, and private machine values retained | VERIFIED |
-| Cloudinary | Scoped runtime folder-manager role passes authenticated read, signed upload, 512x512 WebP, and cleanup. No smoke asset remains | VERIFIED |
-| PostHog / Sentry | Existing project/event and project/ingestion smoke retained; no billing method added | VERIFIED |
+| Netlify | Free site `runiis-web` (`129537db-751a-4828-9651-3cd93fef4c37`) linked only to `LehiSalvador/RUNIIS` | VERIFIED |
+| Netlify deploys/domain | Production and permanent staging root/health return 200; apex TLS valid; `www` redirects to apex | VERIFIED |
+| Google OAuth | Existing staging/production clients and enabled Supabase providers retained with exact callbacks | VERIFIED_CONFIGURATION |
+| Brevo | Free onboarding, domain auth, SMTP staging/production, and staging OTP delivery retained | VERIFIED |
+| Cloudinary | Scoped runtime key: signed upload, 512x512 WebP, and test-asset cleanup passed final smoke | VERIFIED |
+| PostHog | Existing project received `infra_smoke_test` | VERIFIED |
+| Sentry | RUNIIS / `runiis-web` project accepted smoke event; no billing method added | VERIFIED |
 
-## Private credential destinations
-
-No credential value is stored in Git, docs, `.env.example`, or this report.
-
-| Source | Purpose | Status |
-| --- | --- | --- |
-| `C:\Users\lehi1\OneDrive\Documentos\RUNIIS_AGENT_SECRETS.env` | Non-SalvaOps runtime credentials; distinct staging/production app secrets; excludes GitHub/Vercel/Supabase management tokens | VERIFIED |
-| `C:\Users\lehi1\OneDrive\Documentos\RUNIIS_SALVAOPS_PROVIDER_ACCESS.env` | Owner manual handoff for GitHub, Vercel, Supabase tokens only | IN_PROGRESS |
-| Netlify secure environment contexts | Individual runtime values only; production Supabase remains separate from local staging `.env.local` | VERIFIED |
-
-### SalvaOps manual handoff
-
-| Provider | Token | Scope / expiration | Private variable | Status |
-| --- | --- | --- | --- | --- |
-| GitHub | `RUNIIS SalvaOps` | Only `LehiSalvador/RUNIIS`; Metadata read, Contents read/write; no expiration | `GITHUB_ACCESS_TOKEN` | VERIFIED |
-| Vercel | `RUNIIS SalvaOps` | `lehisalvador` / `lehisalvadors-projects`; Full Account required for DNS; no expiration | `VERCEL_ACCESS_TOKEN` | VERIFIED |
-| Supabase | `RUNIIS SalvaOps` | RUNIIS staging + production only; Project Settings and Auth Config read/write; maximum date 2027-09-26 | `SUPABASE_ACCESS_TOKEN` | DEFERRED |
-
-GitHub token verification returned authenticated identity and repository access. Vercel verification returned authenticated identity, team domain listing, and DNS record read for `runiismty.com`.
-
-## Smoke evidence
+## Final smoke and quality evidence
 
 - Production: `https://runiismty.com/` and `/api/health` return 200.
 - Staging: `https://staging--runiis-web.netlify.app/` and `/api/health` return 200.
-- `https://www.runiismty.com/` returns `301 Location: https://runiismty.com/`.
-- Cloudinary: signed runtime upload PASS; 512x512 WebP PASS; cleanup PASS; test-prefix verification count zero.
-- Brevo/Supabase SMTP OTP remains verified; no provider key rotated in this pass.
-- Google provider has exact production callback and enabled status. Full browser sign-in remains application-flow validation, not infrastructure failure.
+- `https://www.runiismty.com/` redirects to `https://runiismty.com/`.
+- Cloudinary: signed runtime upload PASS; 512x512 WebP PASS; cleanup PASS; no smoke asset remains.
+- Brevo/Supabase SMTP OTP remains verified; no provider key rotated during final smoke.
+- `pnpm run lint`, `pnpm run typecheck`, `pnpm test`, and `pnpm run build` pass from canonical workspace.
 
-## Workspace correction
+## Owner manual binding
 
-- Correction backup: `C:\Users\lehi1\OneDrive\Documentos\RUNIIS_WORKSPACE_CORRECTION_BACKUP_20260926-221732`.
-- Credential-master backup: `RUNIIS_CREDENCIALES_MAESTRAS.backup-pre-workspace-correction-20260926-225509.txt` outside Git.
-- Canonical SalvaOps metadata remains local and excluded through `.git/info/exclude`.
-- Accidental workspace remains only until provider-access source is complete and final compare/deletion gate passes.
+SalvaOps internal connector automation is not available on this machine. Owner can open SalvaOps and copy three values from private handoff file into GitHub, Vercel, and Supabase bindings using these resource identities:
 
-## Deferred final action
+- GitHub repository: `LehiSalvador/RUNIIS`
+- Vercel project: `runiis-web` / `prj_8cMyzcQpzyJUd286AQ5DmpN2fHZE`
+- Supabase staging: `brxdgvcfykmsqmhsvgxl`; production: `mdzhsoeqagtwznybwtuy`
 
-### DEFERRED-001
-
-- Provider: Supabase.
-- Page: `https://supabase.com/dashboard/account/tokens`.
-- Task: create/recover scoped `RUNIIS SalvaOps` token.
-- Prepared scope: RUNIIS, projects `runiis-web-prod` and `runiis-web-staging`; Project Settings and Auth Config read/write; expiry 2027-09-26.
-- Result: three dashboard submission routes (two UI clicks, Playwright click, and keyboard activation) produced no token and no provider error. Existing `RUNIIS Codex Management` remains active through 2027-09-19, but its one-time value cannot be recovered.
-- Direct dependencies: `SUPABASE_ACCESS_TOKEN` handoff, final source validation, accidental-workspace removal, completion declaration.
-- Next automatic step: retry from fresh authenticated dashboard; verify both project refs; store only `SUPABASE_ACCESS_TOKEN` privately.
-
-## Safety checklist
-
-- [x] `.env.example` has empty values only.
-- [x] `.env.local`, state, local secrets, provider files, credential masters, backups, Netlify/Vercel state, build output, and logs ignored.
-- [x] Current tracked filename audit finds no credential or backup file.
-- [x] No history rewrite or force-push: scan clean except safe placeholder.
-- [x] No paid plan, card, upgrade, account recreation, or broad Cloudinary runtime role.
-- [ ] Supabase SalvaOps token captured and verified — provider UI deferred after three non-creating submissions.
-- [ ] Final accidental-workspace compare and removal.
+This is `OWNER_MANUAL_BINDING_READY`, not infrastructure blocker.
