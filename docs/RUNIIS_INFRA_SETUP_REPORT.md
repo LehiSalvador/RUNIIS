@@ -88,11 +88,22 @@ The versioned `.env.example` contains names only. `.env.local`, `.local-secrets/
 ### Deferred technical dependencies
 
 - Production Supabase migration: current publishable and server keys were migrated directly from the authenticated production dashboard into Netlify production. The stale canonical-master value was not used and no production value was added to `.env.local`.
+- Local Brevo runtime env: values are safely configured in Netlify Production and Branch deploy contexts, and remote Supabase SMTP is verified. This browser-only secure-provider surface cannot write those values into ignored `.env.local` without exposing them through an unsupported transfer, so no local secret was copied, printed, or reconstructed.
 - Google OAuth: production client, provider, and exact URL configuration are verified. `RUNIIS Staging Active` supersedes original one-time-secret staging client and is saved in Supabase staging. Full browser sign-in smoke remains pending application login-flow validation.
 - Cloudinary signed upload: authenticated Admin read returns 200, but a direct independently signed staging upload returns 403 `Request forbidden due to missing permissions (actions=[create])`. Root cause is current key permission, not signature, clock, or environment formatting. Cloudinary's Free console exposes only a broad Master Admin role or a controlled Media Library role for this key; folder-editor grants require its authenticated Admin API. Required avatar folders exist; no asset was created and no key was rotated.
 - PostHog project label: configured project ID is valid but provider label remains `Default project`, not `RUNIIS WEB`.
 - Sentry: provider shows its included 14-day trial banner. No payment method or upgrade was accepted; verify Free-plan behavior without enabling billing.
 - SalvaOps: no direct connector/index surface is available to this execution environment. No unsupported integration was fabricated.
+
+### HUMAN_REQUIRED-001
+
+- Provider: Cloudinary
+- URL/tab: `https://console.cloudinary.com/console`
+- Reason: existing `RUNIIS Runtime` API key has no `create` permission. Free Console exposes only broad Master Admin or controlled Media Library User for the key; least-privilege folder-editor assignment requires authenticated Cloudinary Admin API root credentials not exposed to this automation surface.
+- Exact action: assign `cld::role::content::folder::editor` to existing RUNIIS Runtime API key for `runiis` folder through Cloudinary Admin API; retain its Media Library User role.
+- Expected result: signed uploads allowed within RUNIIS media folders without granting Master Admin.
+- Already completed: cloud, folders, key, signature diagnosis, and no-retained-asset safety check.
+- Next automatic step after action: rerun signed upload, 512x512 WebP transform, and cleanup smoke.
 
 ### Netlify cleanup
 
