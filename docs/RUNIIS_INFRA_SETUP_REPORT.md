@@ -5,6 +5,7 @@
 - Canonical workspace: `C:\PROYECTOS_CLAUDE\RUNIIIS WEB`
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`; staging branch: `staging`
+- Final handoff commit: commit containing this report on `main` (resolve with `git rev-parse HEAD` at handoff)
 - Result: `INFRA_SETUP_PARTIAL` — infrastructure, runtime, hosting, and independent final checks verified. Scoped Supabase handoff-token creation remains deferred after three dashboard submission routes produced neither a token nor a provider error. No secret value appears here.
 
 ## Verified infrastructure
