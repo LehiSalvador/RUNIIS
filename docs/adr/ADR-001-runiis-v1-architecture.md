@@ -87,6 +87,60 @@ Status: accepted · 2026-09-27 · Applies to all V1 work. Functional authority r
     `supabase test db`, Playwright (E2E desktop+mobile, axe), k6 via the `grafana/k6` image.
     Test names carry Master requirement IDs (e.g. `CAP-001`) for traceability.
 
+## Amendment 1 — security decisions from the T11 threat model (2026-09-27)
+
+Requirement IDs refer to `.salvaops-agent-evidence/T11-appsec-threat-model/threat-model.md` (SEC-nnn).
+
+A1. **QR issuance is SYSTEM-only (SEC-030 option B).** No `anon`/`authenticated`-callable function
+    accepts or returns credential material (token, hash, ciphertext, key version). User/staff
+    commands (FREE registration, confirm, revalidate-and-confirm, replace) create or retire
+    Registration/ParticipantPass/credential state atomically; the ACTIVE credential is issued by
+    `private.issue_pass_credential(...)`, executable only by `service_role`, called by the server
+    immediately after commit, retried from the outbox (`ParticipantPassIssued`/replacement effects) and
+    lazily on authorised render. It issues only for an ACTIVE pass of a CONFIRMED Registration with no
+    ACTIVE credential (partial unique index keeps one). Replacement retires the old credential in the
+    staff command (it stops authorising immediately) and the next version is issued the same way.
+    This keeps the Master's symmetric `PASS_CREDENTIAL_ENCRYPTION_KEY_V<n>` design.
+A2. **Credential crypto** adds AAD `RN1|<participant_pass_credential_id>|<key_version>` and a post-decrypt
+    `sha256(token) == token_hash` check (fail closed); keys are validated at boot; every key version
+    referenced by an ACTIVE credential stays configured (SEC-033..035).
+A3. **Pass emails** (Master §133/§229) carry the recipient's own QR (Guest QR to the buyer) rendered at
+    dispatch time only; `render_context_snapshot` stores ids, never token/ciphertext/rendered QR; buyer
+    summaries never include Friends' QR. Mailbox exposure is an accepted V1 risk mitigated by
+    replacement. Replacement is staff-only in V1 (Master §168).
+A4. **Direct-API safety.** Every callable function is safe without Next: it validates all inputs,
+    derives the actor only from `auth.uid()` (no actor/owner/staff parameter on user-callable
+    functions), derives staff scope from the target row, re-raises constraint violations as domain codes
+    with client-safe `detail` (ids the caller owns only), and returns explicit projections. Default
+    privileges in `public` are revoked; grants follow an allowlist checked by pgTAP; `pg_graphql` is
+    dropped; PostgREST `max_rows` caps lists. A PostgREST pre-request gateway secret (SEC-001) is
+    deferred (needs per-environment secret provisioning); SEC-002..008 are mandatory instead.
+A5. **Idempotency** hash is computed inside the command from its own canonical arguments (the handler
+    hash is advisory); uniqueness uses `NULLS NOT DISTINCT`; replay re-authorises; stored responses
+    never contain secrets (SEC-140).
+A6. **Rate limits are two-layer**: a committed pre-check (`private.consume_rate_limit`) called by Next
+    before the command (counts failures; per actor and per client IP for anonymous endpoints) plus
+    success-path counters inside commands (enforced for direct callers) (SEC-141).
+A7. **Auth hardening enforced in the database** so it holds even where remote Auth config cannot be
+    changed through available authority: a trigger on `auth.users` rejects any non-empty password
+    (OTP/Google only, SEC-040) and rejects active blocked identities by normalised email; a trigger on
+    `auth.identities` rejects blocked Google subjects (SEC-047); the Auth hook is also enabled locally.
+    Remote OTP timings, confirmations, redirect allowlist and CAPTCHA stay a verification gap owned by
+    the orchestrator. OTP request responses are identical for every email state (SEC-043).
+A8. **Sessions**: no browser Supabase client; all auth operations go through route handlers; session
+    cookies HttpOnly, Secure, SameSite=Lax; callback `next` limited to an internal allowlist (SEC-044/049).
+A9. **Web platform**: nonce CSP on dynamic routes, security headers, image optimizer limited to the
+    RUNIIS Cloudinary cloud, no `dangerouslySetInnerHTML` except escaped JSON-LD, markdown without raw
+    HTML and with scheme allowlist, MapLibre text-only sinks (SEC-060..066). Cached public pages never
+    read cookies. PostHog: no autocapture/replay, random analytics id, query strings stripped; Sentry:
+    `sendDefaultPii: false` with scrubbing (SEC-110/111). `EMAIL_DELIVERY_MODE` unset → `capture` outside
+    production and refuse-send in production (SEC-083). Cloudinary pending avatars use `type=authenticated`
+    (SEC-090). Worker kick URLs are built from `APP_BASE_URL` only (SEC-070).
+A10. **Minors**: `is_searchable = false` for MINOR_NONCOMPETITIVE profiles (not user-selectable); guardian
+    relation never public. A GuardianAssignment becomes ACTIVE when the guardian (and, for a minor
+    RunnerProfile, the minor) confirms in-app; per-event in-person verification stays mandatory
+    (Master §21) (SEC-014/120).
+
 ## Layout
 
 ```
