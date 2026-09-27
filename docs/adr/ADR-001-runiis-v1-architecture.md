@@ -7,9 +7,13 @@ Status: accepted · 2026-09-27 · Applies to all V1 work. Functional authority r
 
 - Next.js App Router app at repository root; Netlify builds root (`netlify.toml`, `@netlify/plugin-nextjs`).
   Production = `main` → `runiismty.com`; staging = branch `staging` → `staging--runiis-web.netlify.app`.
-- Supabase: SalvaOps binding reaches only production (`runiis-web-prod`). Staging project exists but is
-  not bound, so remote migrations can only be applied to production through SalvaOps. Local Docker
-  Supabase is the pre-production validation environment.
+- Supabase (owner decision 2026-09-27): the only authoritative remote database is production
+  (`runiis-web-prod`), reached exclusively through its SalvaOps binding and only with artifacts whose
+  gates passed locally. Local Docker Supabase hosts development, resets, migrations, RLS/Auth tests,
+  integration, concurrency and pre-release E2E. Netlify staging is build/UI/non-destructive smoke only and
+  never uses production Supabase as a substitute. The remote staging Supabase project is non-authoritative
+  and unused. Missing SalvaOps capabilities (e.g. remote Auth config mutation) are documented gaps, not
+  owner tasks.
 - Remote PostgREST exposes only `public` and `graphql_public`; exposed schemas cannot be changed through
   available authority. Media provider is Cloudinary (reconciles Master R2 references; `ObjectStorage`
   abstraction unchanged). Email: Brevo HTTP API (app) + Brevo SMTP (Supabase Auth OTP).
