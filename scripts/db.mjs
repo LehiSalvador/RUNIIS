@@ -65,7 +65,7 @@ const [command, ...rest] = process.argv.slice(2);
 
 const commands = {
   reset: () => withLock("reset", () => run("supabase", ["db", "reset", "--local", ...rest])),
-  test: () => withLock("test", () => run("supabase", ["test", "db", ...rest])),
+  test: () => withLock("test", () => run("supabase", ["test", "db", "--local", ...rest])),
   migrate: () => withLock("migrate", () => run("supabase", ["migration", "up", "--local", ...rest])),
   // Runs an arbitrary command (e.g. an integration suite) while holding the lock.
   locked: () => {
