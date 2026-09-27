@@ -5,7 +5,11 @@
 .local-state/
 RUNIIS_CREDENCIALES_MAESTRAS.txt
 RUNIIS_CREDENCIALES_MAESTRAS
-.backup-pre-infra-
+RUNIIS_CREDENCIALES_MAESTRAS*
+RUNIIS_SECRETS.env
+RUNIIS_AGENT_SECRETS.env
+RUNIIS_SALVAOPS_PROVIDER_ACCESS.env
+.backup-pre-infra*
 node_modules/
 .next/
 .netlify/
@@ -13,6 +17,7 @@ node_modules/
 .vercel/
 supabase/.temp/
 coverage/
+logs/
 playwright-report/
 test-results/
 *.tsbuildinfo
