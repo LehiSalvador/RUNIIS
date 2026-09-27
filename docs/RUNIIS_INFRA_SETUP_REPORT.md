@@ -5,7 +5,7 @@
 - Canonical workspace: `C:\PROYECTOS_CLAUDE\RUNIIIS WEB`
 - Repository: `https://github.com/LehiSalvador/RUNIIS.git`
 - Production branch: `main`; staging branch: `staging`
-- Result: `INFRA_SETUP_PARTIAL` — runtime and hosting checks verified. Final consolidation awaits scoped Supabase token creation/recovery. No secret value appears here.
+- Result: `INFRA_SETUP_PARTIAL` — infrastructure, runtime, hosting, and independent final checks verified. Scoped Supabase handoff-token creation remains deferred after three dashboard submission routes produced neither a token nor a provider error. No secret value appears here.
 
 ## Verified infrastructure
 
@@ -39,7 +39,7 @@ No credential value is stored in Git, docs, `.env.example`, or this report.
 | --- | --- | --- | --- | --- |
 | GitHub | `RUNIIS SalvaOps` | Only `LehiSalvador/RUNIIS`; Metadata read, Contents read/write; no expiration | `GITHUB_ACCESS_TOKEN` | VERIFIED |
 | Vercel | `RUNIIS SalvaOps` | `lehisalvador` / `lehisalvadors-projects`; Full Account required for DNS; no expiration | `VERCEL_ACCESS_TOKEN` | VERIFIED |
-| Supabase | `RUNIIS SalvaOps` | Intended: staging + production only; Project Settings and Auth Config read/write; maximum date 2027-09-26 | `SUPABASE_ACCESS_TOKEN` | DEFERRED |
+| Supabase | `RUNIIS SalvaOps` | RUNIIS staging + production only; Project Settings and Auth Config read/write; maximum date 2027-09-26 | `SUPABASE_ACCESS_TOKEN` | DEFERRED |
 
 GitHub token verification returned authenticated identity and repository access. Vercel verification returned authenticated identity, team domain listing, and DNS record read for `runiismty.com`.
 
@@ -67,7 +67,7 @@ GitHub token verification returned authenticated identity and repository access.
 - Page: `https://supabase.com/dashboard/account/tokens`.
 - Task: create/recover scoped `RUNIIS SalvaOps` token.
 - Prepared scope: RUNIIS, projects `runiis-web-prod` and `runiis-web-staging`; Project Settings and Auth Config read/write; expiry 2027-09-26.
-- Result: two confirmed dashboard submissions produced no token and no provider error. Existing `RUNIIS Codex Management` remains active through 2027-09-19, but one-time value cannot be recovered.
+- Result: three dashboard submission routes (two UI clicks, Playwright click, and keyboard activation) produced no token and no provider error. Existing `RUNIIS Codex Management` remains active through 2027-09-19, but its one-time value cannot be recovered.
 - Direct dependencies: `SUPABASE_ACCESS_TOKEN` handoff, final source validation, accidental-workspace removal, completion declaration.
 - Next automatic step: retry from fresh authenticated dashboard; verify both project refs; store only `SUPABASE_ACCESS_TOKEN` privately.
 
@@ -78,5 +78,5 @@ GitHub token verification returned authenticated identity and repository access.
 - [x] Current tracked filename audit finds no credential or backup file.
 - [x] No history rewrite or force-push: scan clean except safe placeholder.
 - [x] No paid plan, card, upgrade, account recreation, or broad Cloudinary runtime role.
-- [ ] Supabase SalvaOps token captured and verified.
+- [ ] Supabase SalvaOps token captured and verified — provider UI deferred after three non-creating submissions.
 - [ ] Final accidental-workspace compare and removal.
