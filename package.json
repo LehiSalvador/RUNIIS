@@ -8,21 +8,43 @@
     "build": "next build",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/**/*.test.ts tests/**/*.test.tsx"
+    "test": "tsx --test tests/**/*.test.ts tests/**/*.test.tsx",
+    "db:reset": "node scripts/db.mjs reset",
+    "db:test": "node scripts/db.mjs test",
+    "db:migrate": "node scripts/db.mjs migrate",
+    "db:sql": "node scripts/db.mjs sql",
+    "db:locked": "node scripts/db.mjs locked",
+    "db:lock-status": "node scripts/db.mjs lock-status"
   },
   "dependencies": {
+    "@date-fns/tz": "^1.5.0",
+    "@supabase/ssr": "^0.12.7",
+    "@supabase/supabase-js": "^2.117.2",
+    "date-fns": "^4.4.0",
+    "fast-xml-parser": "^5.11.1",
+    "maplibre-gl": "^6.11.2",
     "next": "16.3.6",
+    "qrcode": "^1.5.4",
     "react": "19.3.0",
-    "react-dom": "19.3.0"
+    "react-dom": "19.3.0",
+    "react-markdown": "^10.1.0",
+    "server-only": "^0.0.1",
+    "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@netlify/functions": "^6.0.0",
     "@netlify/plugin-nextjs": "5.16.0",
+    "@playwright/test": "^1.63.0",
     "@types/node": "25.0.10",
+    "@types/qrcode": "^1.5.6",
     "@types/react": "19.2.8",
     "@types/react-dom": "19.2.3",
+    "@vitest/coverage-v8": "^5.0.2",
     "eslint": "9.39.1",
     "eslint-config-next": "16.3.6",
     "tsx": "4.23.15",
-    "typescript": "6.0.3"
+    "typescript": "6.0.3",
+    "vitest": "^5.0.2"
   }
 }

@@ -22,3 +22,5 @@ playwright-report/
 test-results/
 *.tsbuildinfo
 *.log
+.salvaops-agent-evidence/
+.playwright-mcp/
