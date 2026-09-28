@@ -6,10 +6,9 @@ export const metadata: Metadata = {
 };
 
 /**
- * Placeholder route-group layout for /cuenta/*. Deliberately thin: AccountShell
- * (components/shell/account-shell.tsx) takes a per-page `pageTitle`, so each account page composes
- * it directly (`<AccountShell pageTitle="Perfil">...</AccountShell>`) rather than this layout
- * hard-coding one title for every page. Later tasks that build the account pages own that wiring.
+ * Thin route-group layout for /cuenta/*. Each page composes AccountShell with its own `pageTitle`
+ * and runs the server guard (app/cuenta/_lib/session.ts) itself, so the redirect back from /entrar
+ * can carry that page's path. Pages read the session cookie, so they always render per request.
  */
 export default function CuentaLayout({ children }: Readonly<{ children: ReactNode }>) {
   return children;

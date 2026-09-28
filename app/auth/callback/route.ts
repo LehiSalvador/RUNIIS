@@ -13,14 +13,14 @@ export async function GET(request: NextRequest) {
   const next = resolveNextPath(searchParams.get("next"));
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/auth/sign-in?error=missing_code`);
+    return NextResponse.redirect(`${origin}/entrar?error=missing_code`);
   }
 
   const supabase = await createSessionClient();
   const { error } = await supabase.auth.exchangeCodeForSession(code);
   if (error) {
     logEvent("warn", "oauth_callback_exchange_failed", { reason: error.name });
-    return NextResponse.redirect(`${origin}/auth/sign-in?error=auth_failed`);
+    return NextResponse.redirect(`${origin}/entrar?error=auth_failed`);
   }
 
   return NextResponse.redirect(`${origin}${next}`);
