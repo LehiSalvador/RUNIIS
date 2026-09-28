@@ -1,5 +1,6 @@
 import "server-only";
 import { issuePendingCredentialsWorker } from "../domain/passes/worker";
+import { communicationReconcileWorker, outboxDispatchWorker, providerUsageReconcileWorker } from "../domain/communications/workers";
 
 export type WorkerContext = { requestId: string };
 /** Small scalar summary returned to the scheduler and logged; never rows or personal data. */
@@ -10,6 +11,9 @@ export type WorkerRegistry = Readonly<Record<string, WorkerHandler>>;
 /** Provider-dependent workers served at /api/internal/workers/<key> (ADR-001 decision 10). */
 export const workerRegistry: WorkerRegistry = {
   "issue-pending-credentials": issuePendingCredentialsWorker,
+  "outbox-dispatch": outboxDispatchWorker,
+  "communication-reconcile": communicationReconcileWorker,
+  "provider-usage-reconcile": providerUsageReconcileWorker,
 };
 
 export function findWorker(registry: WorkerRegistry, key: string): WorkerHandler | undefined {

@@ -13,6 +13,17 @@ const serverEnvSchema = z.object({
   SUPABASE_SECRET_KEY: z.string().min(1),
   PASS_CREDENTIAL_ENCRYPTION_KEY_V1: z.string().min(MIN_SECRET_LENGTH),
   INTERNAL_CRON_SECRET: z.string().min(MIN_SECRET_LENGTH),
+  // T35 communications (A9): EMAIL_DELIVERY_MODE unset resolves to capture outside production and to a
+  // hard refuse-to-send in production (lib/server/providers/email/delivery-mode.ts), so none of these are
+  // schema-required — a fresh environment must boot before anyone wires up Brevo.
+  EMAIL_DELIVERY_MODE: z.enum(["live", "allowlist", "capture"]).optional(),
+  EMAIL_ALLOWLIST: z.string().optional(),
+  BREVO_API_KEY: z.string().optional(),
+  BREVO_WEBHOOK_AUTH_SECRET: z.string().optional(),
+  BREVO_SENDER_EMAIL: z.email().optional(),
+  BREVO_SENDER_NAME: z.string().min(1).optional(),
+  /** Local dev/test only: Mailpit's HTTP API (never used in production; capture mode does not need Brevo). */
+  MAILPIT_URL: z.url().optional(),
 });
 
 export type ServerEnv = z.output<typeof serverEnvSchema> & {
