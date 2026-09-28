@@ -1,32 +1,30 @@
 import { test as base, expect, type Page } from "@playwright/test";
 
 /**
- * Local fixtures for foundation specs. GET /api/v1/me belongs to T20; the session chip is exercised
- * against intercepted responses so these specs never depend on a real session or a running auth
- * backend. Default is an anonymous visitor (401 AUTH_REQUIRED, the documented contract).
+ * Local fixtures for foundation specs. The header chip reads GET /api/v1/session (always 200); it is
+ * exercised against intercepted responses so these specs never depend on a real session or a
+ * running auth backend. Default is an anonymous visitor.
  */
 export type MeFixture = "anonymous" | "authenticated";
 
 export async function mockMe(page: Page, mode: MeFixture) {
-  await page.route("**/api/v1/me", (route) =>
-    mode === "authenticated"
-      ? route.fulfill({
-          status: 200,
-          contentType: "application/json",
-          body: JSON.stringify({ data: { display_name: "Corredora Sintética", avatar_url: null }, meta: {} }),
-        })
-      : route.fulfill({
-          status: 401,
-          contentType: "application/json",
-          body: JSON.stringify({ error: { code: "AUTH_REQUIRED", message: "Debes iniciar sesión." } }),
-        }),
+  await page.route("**/api/v1/session", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data:
+          mode === "authenticated"
+            ? { authenticated: true, display_name: "Corredora Sintética", avatar_url: null }
+            : { authenticated: false },
+      }),
+    }),
   );
 }
 
-/** Chromium logs every non-2xx fetch as a console error; the anonymous /api/v1/me 401 is expected
- * (see T15 handoff finding on the anonymous /me contract), everything else is a real failure. */
-export function isExpectedConsoleNoise(text: string): boolean {
-  return /Failed to load resource: the server responded with a status of 401/.test(text);
+/** The session probe answers 200 for anonymous visitors, so no console error is expected noise. */
+export function isExpectedConsoleNoise(_text: string): boolean {
+  return false;
 }
 
 export const test = base.extend<{ consoleErrors: string[] }>({

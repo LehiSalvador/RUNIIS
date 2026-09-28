@@ -7,14 +7,18 @@ import { getServerEnv } from "@/lib/server/env";
 // every Server Component in the request sees a valid session. It is never the authorization
 // boundary — every route handler and DB command re-checks the actor independently.
 //
-// It also issues the per-request CSP nonce (SEC-060/064) that authenticated/page responses carry;
-// `next.config.ts` sets the header-only CSP for everything that does not need a nonce.
+// It also sets the CSP (SEC-060/064): a per-request nonce policy for session surfaces, and a
+// nonce-free policy for the cached public pages (buildPublicCsp below).
 export async function proxy(request: NextRequest) {
-  const nonce = crypto.randomUUID().replace(/-/g, "");
-  const csp = buildCsp(nonce);
-
   const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-nonce", nonce);
+  let csp: string;
+  if (isCachedPublicPath(request.nextUrl.pathname)) {
+    csp = buildPublicCsp();
+  } else {
+    const nonce = crypto.randomUUID().replace(/-/g, "");
+    csp = buildCsp(nonce);
+    requestHeaders.set("x-nonce", nonce);
+  }
 
   let response = NextResponse.next({ request: { headers: requestHeaders } });
   response.headers.set("Content-Security-Policy", csp);
@@ -40,15 +44,48 @@ export async function proxy(request: NextRequest) {
   return response;
 }
 
-function buildCsp(nonce: string): string {
-  const cloudinaryCloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+// SEC-060: the public surfaces (Home, /eventos, Event pages, /runiis, /contacto, /legal) are
+// static/ISR HTML shared by every visitor, so they cannot carry a per-request nonce -- a nonce CSP
+// there blocks every prerendered Next script. They get a nonce-free policy that allows only the
+// inline bootstrap Next emits, plus the MapLibre needs of the Event page route map: the OpenFreeMap
+// style/tiles/glyphs (connect-src) and its blob: web worker. Everything behind a session keeps the
+// nonce + strict-dynamic policy.
+const NONCE_PREFIXES = ["/admin", "/cuenta", "/scanner", "/inscripcion", "/entrar", "/onboarding", "/auth", "/api", "/design-system"];
+const MAP_TILE_ORIGIN = "https://tiles.openfreemap.org";
+// React needs eval() for dev-only debugging features; production never uses it.
+const DEV_EVAL = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
+
+export function isCachedPublicPath(pathname: string): boolean {
+  return !NONCE_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
+}
+
+function imgSrc(): string {
   // blob: is needed for client-rendered SVGs shown via an object URL (e.g. the pass QR view).
-  const imgSrc = cloudinaryCloud ? "'self' data: blob: https://res.cloudinary.com" : "'self' data: blob:";
+  return process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ? "'self' data: blob: https://res.cloudinary.com" : "'self' data: blob:";
+}
+
+export function buildPublicCsp(): string {
   return [
     "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
+    `script-src 'self' 'unsafe-inline'${DEV_EVAL}`,
     "style-src 'self' 'unsafe-inline'",
-    `img-src ${imgSrc}`,
+    `img-src ${imgSrc()}`,
+    "font-src 'self'",
+    `connect-src 'self' ${MAP_TILE_ORIGIN}`,
+    "worker-src 'self' blob:",
+    "frame-ancestors 'none'",
+    "base-uri 'none'",
+    "object-src 'none'",
+    "form-action 'self'",
+  ].join("; ");
+}
+
+function buildCsp(nonce: string): string {
+  return [
+    "default-src 'self'",
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${DEV_EVAL}`,
+    "style-src 'self' 'unsafe-inline'",
+    `img-src ${imgSrc()}`,
     "font-src 'self'",
     "connect-src 'self'",
     "frame-ancestors 'none'",

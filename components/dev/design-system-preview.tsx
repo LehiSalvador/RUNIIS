@@ -148,8 +148,9 @@ export function DesignSystemPreview({ sampleQrSrc }: { sampleQrSrc: string }) {
         failNextQrRef.current = false; // the retry then succeeds
         throw new Error("render failed");
       }
-      const response = await fetch(sampleQrSrc, { signal });
-      return response.blob();
+      // Decoded locally: the CSP's connect-src does not allow fetching data: URLs.
+      signal.throwIfAborted();
+      return new Blob([atob(sampleQrSrc.slice(sampleQrSrc.indexOf(",") + 1))], { type: "image/svg+xml" });
     },
     [sampleQrSrc],
   );

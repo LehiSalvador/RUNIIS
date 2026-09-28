@@ -14,15 +14,15 @@ test.describe("public shell", () => {
   });
 
   test("anonymous visitors get the Entrar chip without the page reading a session", async ({ page }) => {
-    const meRequest = page.waitForRequest("**/api/v1/me");
+    const sessionRequest = page.waitForRequest("**/api/v1/session");
     await page.goto("/");
-    const request = await meRequest;
+    const request = await sessionRequest;
     expect(request.method()).toBe("GET");
     await expect(page.getByRole("banner").getByRole("link", { name: "Entrar" })).toHaveAttribute("href", "/entrar");
   });
 
   test("signed-in visitors get the Mi cuenta chip", async ({ page }) => {
-    await page.unroute("**/api/v1/me");
+    await page.unroute("**/api/v1/session");
     await mockMe(page, "authenticated");
     await page.goto("/");
     await expect(page.getByRole("banner").getByRole("link", { name: "Mi cuenta" })).toHaveAttribute("href", "/cuenta");
