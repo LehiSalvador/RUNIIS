@@ -157,9 +157,9 @@ select throws_ok($$ insert into infra.idempotency_record (operation_key, resourc
   state, expires_at) values ('worker', 'global', 'k1', repeat('b', 64), 'COMPLETED', now() + interval '1 day') $$,
   '23505', null, 'SYSTEM (null actor) idempotency keys are unique too');
 insert into infra.communication_provider_event (provider, provider_event_id, event_type, authenticated, payload_safe,
-  processing_status) values ('brevo', 'evt-1', 'delivered', true, '{}', 'PENDING');
+  processing_status) values ('brevo', 'evt-1', 'delivered', true, '{}', 'RECEIVED');
 select throws_ok($$ insert into infra.communication_provider_event (provider, provider_event_id, event_type,
-  authenticated, payload_safe, processing_status) values ('brevo', 'evt-1', 'delivered', true, '{}', 'PENDING') $$,
+  authenticated, payload_safe, processing_status) values ('brevo', 'evt-1', 'delivered', true, '{}', 'RECEIVED') $$,
   '23505', null, 'provider events are deduplicated');
 
 select * from finish();

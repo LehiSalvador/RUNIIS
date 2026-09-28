@@ -57,9 +57,9 @@ insert into app.route (route_id, edition_id, name) values
   ('64000000-0000-4000-8000-000000000001', '50000000-0000-4000-8000-000000000001', 'Ruta 10K');
 insert into app.registration_request (registration_request_id, public_reference, buyer_profile_id, edition_id,
   registration_mode, currency, total_snapshot_minor, expires_at) values
-  ('70000000-0000-4000-8000-000000000001', 'RQ-0001', '10000000-0000-4000-8000-00000000000a',
+  ('70000000-0000-4000-8000-000000000001', 'R-0001-AAAA', '10000000-0000-4000-8000-00000000000a',
    '50000000-0000-4000-8000-000000000001', 'EXTERNAL_WHATSAPP', 'MXN', 0, now() + interval '24 hours'),
-  ('70000000-0000-4000-8000-000000000003', 'RQ-0003', '10000000-0000-4000-8000-00000000000b',
+  ('70000000-0000-4000-8000-000000000003', 'R-0003-AAAA', '10000000-0000-4000-8000-00000000000b',
    '50000000-0000-4000-8000-000000000001', 'EXTERNAL_WHATSAPP', 'MXN', 0, now() + interval '24 hours');
 insert into app.registration_request_participant (request_participant_id, registration_request_id, participant_kind,
   runner_profile_id, guest_participant_id, modality_id, category_id, price_snapshot_minor, currency, eligibility_snapshot) values
@@ -82,13 +82,13 @@ insert into app.registration (registration_id, registration_request_id, request_
   runner_profile_id, guest_participant_id, buyer_profile_id, registration_number) values
   ('72000000-0000-4000-8000-000000000001', '70000000-0000-4000-8000-000000000001', '71000000-0000-4000-8000-000000000001',
    '50000000-0000-4000-8000-000000000001', '60000000-0000-4000-8000-000000000001',
-   '10000000-0000-4000-8000-00000000000a', null, '10000000-0000-4000-8000-00000000000a', 'R-0001'),
+   '10000000-0000-4000-8000-00000000000a', null, '10000000-0000-4000-8000-00000000000a', 'I-0001-AAAA'),
   ('72000000-0000-4000-8000-000000000002', '70000000-0000-4000-8000-000000000001', '71000000-0000-4000-8000-000000000002',
    '50000000-0000-4000-8000-000000000001', '60000000-0000-4000-8000-000000000001',
-   null, '30000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-00000000000a', 'R-0002');
+   null, '30000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-00000000000a', 'I-0002-AAAA');
 insert into app.participant_pass (participant_pass_id, registration_id, public_code) values
-  ('73000000-0000-4000-8000-000000000001', '72000000-0000-4000-8000-000000000001', 'P-0001'),
-  ('73000000-0000-4000-8000-000000000002', '72000000-0000-4000-8000-000000000002', 'P-0002');
+  ('73000000-0000-4000-8000-000000000001', '72000000-0000-4000-8000-000000000001', 'P-0001-AAAA'),
+  ('73000000-0000-4000-8000-000000000002', '72000000-0000-4000-8000-000000000002', 'P-0002-AAAA');
 insert into app.participant_pass_credential (participant_pass_credential_id, participant_pass_id, version, token_hash,
   token_ciphertext, encryption_key_version) values
   ('74000000-0000-4000-8000-000000000001', '73000000-0000-4000-8000-000000000001', 1, repeat('a', 64),
@@ -226,15 +226,15 @@ select throws_ok($$ update app.modality set edition_id = '50000000-0000-4000-800
 -- Registration invariants
 ------------------------------------------------------------------------------------------------------------------------
 select throws_ok($$ insert into app.registration_request (public_reference, buyer_profile_id, edition_id,
-  registration_mode, currency, total_snapshot_minor, expires_at) values ('RQ-0002', '10000000-0000-4000-8000-00000000000a',
+  registration_mode, currency, total_snapshot_minor, expires_at) values ('R-0002-AAAA', '10000000-0000-4000-8000-00000000000a',
   '50000000-0000-4000-8000-000000000001', 'EXTERNAL_WHATSAPP', 'MXN', 0, now() + interval '24 hours') $$, '23505', null,
   'one PENDING_CONFIRMATION request per buyer + Edition');
 select throws_ok($$ insert into app.registration_request (public_reference, buyer_profile_id, edition_id,
-  registration_mode, currency, total_snapshot_minor) values ('RQ-0009', '10000000-0000-4000-8000-00000000000a',
+  registration_mode, currency, total_snapshot_minor) values ('R-0009-AAAA', '10000000-0000-4000-8000-00000000000a',
   '50000000-0000-4000-8000-000000000002', 'EXTERNAL_WHATSAPP', 'MXN', 0) $$, '23514', null,
   'EXTERNAL_WHATSAPP request requires expires_at');
 select throws_ok($$ insert into app.registration_request (public_reference, buyer_profile_id, edition_id,
-  registration_mode, currency, total_snapshot_minor) values ('RQ-0010', '10000000-0000-4000-8000-00000000000a',
+  registration_mode, currency, total_snapshot_minor) values ('R-0010-AAAA', '10000000-0000-4000-8000-00000000000a',
   '50000000-0000-4000-8000-000000000002', 'FREE', 'mxn', 0) $$, '23514', null, 'currency must be ISO upper-case');
 select throws_ok($$ insert into app.registration_request_participant (registration_request_id, participant_kind,
   runner_profile_id, guest_participant_id, modality_id, price_snapshot_minor, currency, eligibility_snapshot) values
@@ -283,33 +283,33 @@ select throws_ok($$ insert into app.registration_participant_claim (edition_id, 
 select throws_ok($$ insert into app.registration (registration_request_id, request_participant_id, edition_id,
   modality_id, runner_profile_id, buyer_profile_id, registration_number) values ('70000000-0000-4000-8000-000000000003',
   '71000000-0000-4000-8000-000000000003', '50000000-0000-4000-8000-000000000001', '60000000-0000-4000-8000-000000000001',
-  '10000000-0000-4000-8000-00000000000a', '10000000-0000-4000-8000-00000000000b', 'R-0003') $$, '23505', null,
+  '10000000-0000-4000-8000-00000000000a', '10000000-0000-4000-8000-00000000000b', 'I-0003-AAAA') $$, '23505', null,
   'duplicate CONFIRMED registration for a runner in the same Edition');
 select throws_ok($$ insert into app.registration (registration_request_id, request_participant_id, edition_id,
   modality_id, guest_participant_id, buyer_profile_id, registration_number) values ('70000000-0000-4000-8000-000000000003',
   '71000000-0000-4000-8000-000000000004', '50000000-0000-4000-8000-000000000001', '60000000-0000-4000-8000-000000000001',
-  '30000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-00000000000b', 'R-0004') $$, '23505', null,
+  '30000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-00000000000b', 'I-0004-AAAA') $$, '23505', null,
   'duplicate CONFIRMED registration for a guest in the same Edition');
 select throws_ok($$ insert into app.registration (registration_request_id, request_participant_id, edition_id,
   modality_id, runner_profile_id, buyer_profile_id, registration_number) values ('70000000-0000-4000-8000-000000000003',
   '71000000-0000-4000-8000-000000000003', '50000000-0000-4000-8000-000000000001', '60000000-0000-4000-8000-000000000001',
-  '10000000-0000-4000-8000-00000000000b', '10000000-0000-4000-8000-00000000000b', 'R-0005') $$, '23503', null,
+  '10000000-0000-4000-8000-00000000000b', '10000000-0000-4000-8000-00000000000b', 'I-0005-AAAA') $$, '23503', null,
   'registration must name the request participant''s runner');
 select throws_ok($$ insert into app.registration (registration_request_id, request_participant_id, edition_id,
   modality_id, runner_profile_id, buyer_profile_id, registration_number, status, canceled_at) values
   ('70000000-0000-4000-8000-000000000003', '71000000-0000-4000-8000-000000000003', '50000000-0000-4000-8000-000000000001',
    '60000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-00000000000a', '10000000-0000-4000-8000-00000000000a',
-   'R-0006', 'CANCELED', now()) $$, '23503', null, 'registration buyer must be the request buyer');
+   'I-0006-AAAA', 'CANCELED', now()) $$, '23503', null, 'registration buyer must be the request buyer');
 select throws_ok($$ insert into app.registration (registration_request_id, request_participant_id, edition_id,
   modality_id, runner_profile_id, buyer_profile_id, registration_number, status, canceled_at) values
   ('70000000-0000-4000-8000-000000000003', '71000000-0000-4000-8000-000000000003', '50000000-0000-4000-8000-000000000001',
    '60000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-00000000000a', '10000000-0000-4000-8000-00000000000b',
-   'R-0007', 'CANCELED', now()) $$, '23503', null, 'cross-edition: registration modality');
+   'I-0007-AAAA', 'CANCELED', now()) $$, '23503', null, 'cross-edition: registration modality');
 select throws_ok($$ update app.registration set runner_profile_id = '10000000-0000-4000-8000-00000000000b'
   where registration_id = '72000000-0000-4000-8000-000000000001' $$, '23001', null, 'registration identity is immutable');
 
 select throws_ok($$ insert into app.participant_pass (registration_id, public_code) values
-  ('72000000-0000-4000-8000-000000000001', 'P-0009') $$, '23505', null, 'one ParticipantPass per registration');
+  ('72000000-0000-4000-8000-000000000001', 'P-0009-AAAA') $$, '23505', null, 'one ParticipantPass per registration');
 select throws_ok($$ insert into app.participant_pass_credential (participant_pass_id, version, token_hash,
   token_ciphertext, encryption_key_version) values ('73000000-0000-4000-8000-000000000001', 2, repeat('b', 64),
   decode(repeat('00', 60), 'hex'), 1) $$, '23505', null, 'duplicate ACTIVE credential per pass');
@@ -497,7 +497,7 @@ select lives_ok($$
   insert into app.registration (registration_request_id, request_participant_id, edition_id, modality_id,
     runner_profile_id, buyer_profile_id, registration_number) values ('70000000-0000-4000-8000-000000000003',
     '71000000-0000-4000-8000-000000000003', '50000000-0000-4000-8000-000000000001', '60000000-0000-4000-8000-000000000001',
-    '10000000-0000-4000-8000-00000000000a', '10000000-0000-4000-8000-00000000000b', 'R-0010') $$,
+    '10000000-0000-4000-8000-00000000000a', '10000000-0000-4000-8000-00000000000b', 'I-0010-AAAA') $$,
   'after cancellation the runner can hold a new CONFIRMED registration in the Edition');
 
 select * from finish();

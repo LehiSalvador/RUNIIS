@@ -1,4 +1,4 @@
-import { createHash, createCipheriv, hkdfSync } from "node:crypto";
+import { createHash, createCipheriv, hkdfSync, randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import {
   ciphertextToBytea,
@@ -7,6 +7,7 @@ import {
   parsePassPayload,
   passCredentials,
   PassCredentialError,
+  type IssuedPassCredential,
 } from "@/lib/server/crypto/pass-credential";
 
 const V1 = "synthetic-pass-key-material-version-one-000";
@@ -24,6 +25,13 @@ function failure(fn: () => unknown): PassCredentialError {
   throw new Error("expected PassCredentialError");
 }
 
+const stored = (issued: IssuedPassCredential) => ({
+  credentialId: issued.credentialId,
+  ciphertext: issued.ciphertext,
+  keyVersion: issued.keyVersion,
+  tokenHash: issued.tokenHash,
+});
+
 describe("pass credential issuing", () => {
   it("issues RN1 payloads with a 32-byte base64url token, sha256 hash and iv||tag||ct ciphertext", () => {
     const issued = service.issue();
@@ -34,6 +42,13 @@ describe("pass credential issuing", () => {
     expect(issued.ciphertext.length).toBe(12 + 16 + token.length);
     expect(issued.ciphertext.toString("utf8")).not.toContain(token);
     expect(issued.keyVersion).toBe(1);
+    expect(issued.credentialId).toMatch(/^[0-9a-f-]{36}$/);
+  });
+
+  it("binds the server-generated credential id", () => {
+    const id = randomUUID();
+    expect(service.issue(id).credentialId).toBe(id);
+    expect(failure(() => service.issue("not-a-uuid")).reason).toBe("DECRYPT_FAILED");
   });
 
   it("never issues the same token twice", () => {
@@ -41,22 +56,24 @@ describe("pass credential issuing", () => {
     expect(hashes.size).toBe(50);
   });
 
-  it("uses the ADR key derivation: HKDF-SHA256(ikm, salt runiis-pass-credential, info v<n>)", () => {
-    const token = parsePassPayload(service.issue().payload);
+  it("uses the ADR key derivation with AAD RN1|<credential_id>|<key_version>", () => {
+    const issued = service.issue();
+    const token = parsePassPayload(issued.payload);
     const key = Buffer.from(hkdfSync("sha256", Buffer.from(V1), "runiis-pass-credential", "v1", 32));
     const iv = Buffer.alloc(12, 7);
     const cipher = createCipheriv("aes-256-gcm", key, iv);
+    cipher.setAAD(Buffer.from(`RN1|${issued.credentialId}|1`));
     const ct = Buffer.concat([cipher.update(token, "utf8"), cipher.final()]);
     const blob = Buffer.concat([iv, cipher.getAuthTag(), ct]);
-    expect(service.decryptPayload(blob, 1)).toBe(`RN1.${token}`);
+    expect(service.decryptPayload({ ...stored(issued), ciphertext: blob })).toBe(`RN1.${token}`);
   });
 });
 
 describe("pass credential decryption", () => {
   it("roundtrips from a Buffer and from PostgREST bytea hex text", () => {
     const issued = service.issue();
-    expect(service.decryptPayload(issued.ciphertext, 1)).toBe(issued.payload);
-    expect(service.decryptPayload(ciphertextToBytea(issued.ciphertext), 1)).toBe(issued.payload);
+    expect(service.decryptPayload(stored(issued))).toBe(issued.payload);
+    expect(service.decryptPayload({ ...stored(issued), ciphertext: ciphertextToBytea(issued.ciphertext) })).toBe(issued.payload);
   });
 
   it.each([
@@ -67,25 +84,41 @@ describe("pass credential decryption", () => {
     const issued = service.issue();
     const tampered = Buffer.from(issued.ciphertext);
     tampered[index] ^= 0x01;
-    expect(failure(() => service.decryptPayload(tampered, 1)).reason).toBe("DECRYPT_FAILED");
+    expect(failure(() => service.decryptPayload({ ...stored(issued), ciphertext: tampered })).reason).toBe("DECRYPT_FAILED");
+  });
+
+  it("rejects a ciphertext swapped onto another credential row (AAD binds the id)", () => {
+    const a = service.issue();
+    const b = service.issue();
+    expect(failure(() => service.decryptPayload({ ...stored(b), ciphertext: a.ciphertext })).reason).toBe("DECRYPT_FAILED");
+    expect(failure(() => service.decryptPayload({ ...stored(a), credentialId: b.credentialId })).reason).toBe("DECRYPT_FAILED");
+  });
+
+  it("fails closed when the decrypted token does not match the stored hash", () => {
+    const a = service.issue();
+    const b = service.issue();
+    expect(failure(() => service.decryptPayload({ ...stored(a), tokenHash: b.tokenHash })).reason).toBe("HASH_MISMATCH");
+    expect(failure(() => service.decryptPayload({ ...stored(a), tokenHash: "zz" })).reason).toBe("DECRYPT_FAILED");
   });
 
   it("fails on truncated or non-hex stored values", () => {
-    expect(failure(() => service.decryptPayload(Buffer.alloc(28), 1)).reason).toBe("DECRYPT_FAILED");
-    expect(failure(() => service.decryptPayload("\\xzz", 1)).reason).toBe("DECRYPT_FAILED");
+    const issued = service.issue();
+    expect(failure(() => service.decryptPayload({ ...stored(issued), ciphertext: Buffer.alloc(28) })).reason).toBe("DECRYPT_FAILED");
+    expect(failure(() => service.decryptPayload({ ...stored(issued), ciphertext: "\\xzz" })).reason).toBe("DECRYPT_FAILED");
   });
 
-  it("fails with a wrong or unknown key version", () => {
+  it("fails with a wrong or unknown key version (the version is also bound as AAD)", () => {
     const issued = rotated.issue();
     expect(issued.keyVersion).toBe(2);
-    expect(rotated.decryptPayload(issued.ciphertext, 2)).toBe(issued.payload);
-    expect(failure(() => rotated.decryptPayload(issued.ciphertext, 1)).reason).toBe("DECRYPT_FAILED");
-    expect(failure(() => service.decryptPayload(issued.ciphertext, 2)).reason).toBe("UNKNOWN_KEY_VERSION");
+    expect(rotated.decryptPayload(stored(issued))).toBe(issued.payload);
+    expect(failure(() => rotated.decryptPayload({ ...stored(issued), keyVersion: 1 })).reason).toBe("DECRYPT_FAILED");
+    expect(failure(() => service.decryptPayload(stored(issued))).reason).toBe("UNKNOWN_KEY_VERSION");
   });
 
   it("keeps decrypting credentials issued before a key rotation", () => {
     const old = service.issue();
-    expect(rotated.decryptPayload(old.ciphertext, old.keyVersion)).toBe(old.payload);
+    expect(rotated.decryptPayload(stored(old))).toBe(old.payload);
+    expect(rotated.configuredKeyVersions).toEqual([1, 2]);
   });
 
   it("does not put plaintext, key material or ciphertext in thrown errors", () => {
@@ -93,7 +126,7 @@ describe("pass credential decryption", () => {
     const token = parsePassPayload(issued.payload);
     const tampered = Buffer.from(issued.ciphertext);
     tampered[20] ^= 0xff;
-    const error = failure(() => service.decryptPayload(tampered, 1));
+    const error = failure(() => service.decryptPayload({ ...stored(issued), ciphertext: tampered }));
     const rendered = `${error.message} ${error.stack ?? ""} ${JSON.stringify(error)}`;
     for (const secret of [token, V1, issued.ciphertext.toString("hex"), tampered.toString("hex")]) {
       expect(rendered).not.toContain(secret);
@@ -129,13 +162,15 @@ describe("token hash and payload parsing", () => {
   });
 });
 
-describe("env-bound service", () => {
+describe("env-bound service and key validation", () => {
   it("builds from PASS_CREDENTIAL_ENCRYPTION_KEY_V<n> env keys", () => {
     const issued = passCredentials().issue();
-    expect(passCredentials().decryptPayload(issued.ciphertext, issued.keyVersion)).toBe(issued.payload);
+    expect(passCredentials().decryptPayload(stored(issued))).toBe(issued.payload);
   });
 
-  it("refuses to start without key material", () => {
+  it("refuses to start without key material, with reused material or with invalid versions", () => {
     expect(() => createPassCredentialService(new Map())).toThrow(/No pass credential encryption keys/);
+    expect(() => createPassCredentialService(new Map([[1, V1], [2, V1]]))).toThrow(/distinct/);
+    expect(() => createPassCredentialService(new Map([[0, V1]]))).toThrow(/version/);
   });
 });

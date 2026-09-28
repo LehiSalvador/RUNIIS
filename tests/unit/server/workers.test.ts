@@ -35,8 +35,8 @@ describe("isAuthorizedWorkerRequest", () => {
 });
 
 describe("worker registry", () => {
-  it("starts empty and ignores prototype keys", () => {
-    expect(Object.keys(workerRegistry)).toEqual([]);
+  it("holds only registered workers and ignores prototype keys", () => {
+    expect(Object.keys(workerRegistry)).toContain("issue-pending-credentials");
     expect(findWorker(workerRegistry, "constructor")).toBeUndefined();
     expect(findWorker(workerRegistry, "__proto__")).toBeUndefined();
   });
