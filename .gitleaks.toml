@@ -1,0 +1,10 @@
+# Synthetic SQL fixtures and local-only seeds use columns such as key/document_key/grant_key/
+# effect_key with readable literal values; the generic entropy rule flags them although they are
+# test data. Every provider-specific secret rule stays active for these paths.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Synthetic SQL test fixtures and local seeds (generic-api-key only)"
+targetRules = ["generic-api-key"]
+paths = ['''^supabase/tests/database/[^/]+\.test\.sql$''', '''^supabase/seeds/[^/]+\.sql$''']
