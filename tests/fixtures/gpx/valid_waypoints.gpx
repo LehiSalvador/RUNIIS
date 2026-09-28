@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RUNIIS test fixture">
+  <wpt lat="25.670000" lon="-100.309800">
+    <name>Salida</name>
+    <desc>Punto de salida oficial</desc>
+    <sym>start</sym>
+  </wpt>
+  <wpt lat="25.673000" lon="-100.305000">
+    <name>Hidratación km 2</name>
+    <sym>water</sym>
+  </wpt>
+  <wpt lat="25.676000" lon="-100.300000">
+    <name>Meta</name>
+    <desc>Línea de meta</desc>
+    <sym>finish</sym>
+    <link href="https://evil.example.com/track">
+      <text>should be dropped</text>
+    </link>
+  </wpt>
+  <trk>
+    <trkseg>
+      <trkpt lat="25.670000" lon="-100.309800" />
+      <trkpt lat="25.673000" lon="-100.305000" />
+      <trkpt lat="25.676000" lon="-100.300000" />
+    </trkseg>
+  </trk>
+</gpx>

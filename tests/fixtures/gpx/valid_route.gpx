@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RUNIIS test fixture">
+  <rte>
+    <name>Ruta 5K</name>
+    <rtept lat="25.670000" lon="-100.309800" />
+    <rtept lat="25.671500" lon="-100.307200" />
+    <rtept lat="25.673000" lon="-100.305000" />
+  </rte>
+</gpx>

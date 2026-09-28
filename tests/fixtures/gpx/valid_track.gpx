@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="RUNIIS test fixture">
+  <trk>
+    <name>Ruta 10K</name>
+    <trkseg>
+      <trkpt lat="25.670000" lon="-100.309800"><ele>520</ele></trkpt>
+      <trkpt lat="25.673000" lon="-100.305000"><ele>522</ele></trkpt>
+      <trkpt lat="25.676000" lon="-100.300000"><ele>525</ele></trkpt>
+    </trkseg>
+  </trk>
+</gpx>

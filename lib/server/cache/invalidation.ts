@@ -16,7 +16,8 @@ type EditionEvent =
   | "EditionPostponed"
   | "EditionCanceled"
   | "EditionSlugChanged"
-  | "PriceOfferChanged";
+  | "PriceOfferChanged"
+  | "RoutePublished";
 type AvailabilityEvent = "CapacityChanged" | "RegistrationRequestCreated" | "RegistrationRequestExpired" | "RegistrationConfirmed";
 type ProfileEvent = "AvatarApproved" | "AvatarRemoved" | "AccountBanned" | "DistanceCreditChanged";
 type RankingEvent = "RankingProjectionUpdated" | "RankingSnapshotCreated";
@@ -48,6 +49,7 @@ export function cacheInvalidationPlan(event: CacheInvalidationEvent): CacheInval
     case "EditionCanceled":
     case "EditionSlugChanged":
     case "PriceOfferChanged":
+    case "RoutePublished":
       return { tags: [cacheTags.editions, cacheTags.edition(event.editionId)], immediate };
     case "CapacityChanged":
       return { tags: [cacheTags.edition(event.editionId), cacheTags.availability(event.editionId)], immediate };
