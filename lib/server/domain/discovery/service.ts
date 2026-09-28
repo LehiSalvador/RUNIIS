@@ -5,6 +5,8 @@ import { createAnonClient } from "@/lib/server/supabase/clients";
 import {
   editionPageResultSchema,
   homeDataSchema,
+  platformContactSchema,
+  publicEventTypesSchema,
   searchEditionsQuerySchema,
   searchEditionsResultSchema,
   sitemapEntriesSchema,
@@ -109,4 +111,14 @@ export async function getSitemapEntries() {
  */
 export async function getEditionAvailability(slug: string): Promise<z.output<typeof publicAvailabilitySchema>> {
   return callRpc(createAnonClient(), "get_edition_page_availability", { p_slug: slug }, publicAvailabilitySchema);
+}
+
+/** GET /api/v1/event-types: active event types for the library filter (Master §165 `type` param). */
+export async function getActiveEventTypes() {
+  return callRpc(createAnonClient(), "get_active_event_types", {}, publicEventTypesSchema);
+}
+
+/** GET /api/v1/platform/contact: the effective default WhatsApp number only, or null if unconfigured. */
+export async function getPlatformContact() {
+  return callRpc(createAnonClient(), "get_public_platform_contact", {}, platformContactSchema);
 }

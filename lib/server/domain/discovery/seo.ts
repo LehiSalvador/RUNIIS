@@ -1,5 +1,6 @@
 import "server-only";
 import type { z } from "zod";
+import { publicMediaUrl } from "@/lib/shared/media-url";
 import type { editionPageSchema } from "./contracts";
 
 // Master §59: per PUBLISHED Edition — title, description, canonical, OG image, SportsEvent/Event
@@ -42,7 +43,10 @@ export function buildEditionSeo(page: EditionPage, baseUrl: string): EditionSeo 
       .find((markdown) => markdown.trim().length > 0) ??
     `${page.edition.name} — ${page.edition.city}, ${page.edition.state_region}. Inscríbete en RUNIIS.`;
 
-  const image = page.media[0] ?? null;
+  // The delivery URL, never the raw storage key (SEC: storage_object_key is an internal Cloudinary
+  // public id, not a client-facing URL). null when there is no media or delivery isn't configured
+  // (no cloud name) — the caller omits the image rather than rendering a broken one.
+  const image = page.media[0] ? publicMediaUrl(page.media[0].storage_object_key, { width: 1200, aspect: "1.91:1" }) : null;
   const schedule = page.edition.schedule;
 
   const startDate =
@@ -70,14 +74,14 @@ export function buildEditionSeo(page: EditionPage, baseUrl: string): EditionSeo 
       },
     },
     ...(startDate ? { startDate } : {}),
-    ...(image ? { image: [image.storage_object_key] } : {}),
+    ...(image ? { image: [image] } : {}),
   };
 
   return {
     title: `${page.edition.name} — RUNIIS`,
     description: plainTextExcerpt(description, 160),
     canonical,
-    ogImage: image?.storage_object_key ?? null,
+    ogImage: image,
     breadcrumbs: [
       { name: "Inicio", url: new URL("/", baseUrl).toString() },
       { name: "Eventos", url: new URL("/eventos", baseUrl).toString() },

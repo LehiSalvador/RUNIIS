@@ -142,6 +142,9 @@ const discoveryKitSchema = z.strictObject({
 });
 
 const discoveryMediaSchema = z.strictObject({
+  // event_media_asset_id lets the caller match an IMAGE/GALLERY/SPONSOR_GROUP content block's
+  // payload.event_media_asset_id (private.cfg_media_ref) to its resolved media here.
+  event_media_asset_id: id,
   storage_object_key: z.string(),
   alt_text: z.string(),
   media_type: z.string(),
@@ -217,3 +220,13 @@ export const editionSlugParamSchema = z.strictObject({
     .max(160)
     .regex(/^[a-z0-9](-?[a-z0-9]+)*$/),
 });
+
+// ---- Public event types & platform contact (GET /api/v1/event-types, GET /api/v1/platform/contact) ----
+
+export const publicEventTypeSchema = z.strictObject({ key: z.string(), name: z.string() });
+export const publicEventTypesSchema = z.array(publicEventTypeSchema);
+
+// The effective default WhatsApp only (private.get_public_platform_contact): nothing else from
+// platform_settings ever reaches a public route (SEC-008 — that table is definer-only, no RLS grant
+// to any API role).
+export const platformContactSchema = z.strictObject({ whatsapp_phone_e164: z.string().nullable() });

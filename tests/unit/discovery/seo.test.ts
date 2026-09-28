@@ -1,4 +1,4 @@
-import { describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test } from "vitest";
 import { buildEditionSeo, type EditionPage } from "@/lib/server/domain/discovery/seo";
 
 // Master §59: title/description/canonical/OG image/JSON-LD/breadcrumbs. §29/§58: never invent a
@@ -107,5 +107,44 @@ describe("buildEditionSeo", () => {
 
   test("ogImage is null when no PUBLISHED media asset exists", () => {
     expect(buildEditionSeo(basePage(), "https://runiis.com").ogImage).toBeNull();
+  });
+
+  describe("media (F1 follow-up: delivery URL, never the raw storage key)", () => {
+    const originalCloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+    afterEach(() => {
+      if (originalCloud === undefined) delete process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+      else process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME = originalCloud;
+    });
+
+    function pageWithMedia(): EditionPage {
+      const page = basePage();
+      page.media = [
+        {
+          event_media_asset_id: "44444444-4444-4444-8444-444444444444",
+          storage_object_key: "runiis/editions/carrera-demo/cover",
+          alt_text: "Cover",
+          media_type: "IMAGE",
+          sort_order: 1,
+          focal_point: null,
+        },
+      ] as unknown as EditionPage["media"];
+      return page;
+    }
+
+    test("ogImage and jsonLd.image are a Cloudinary delivery URL, never the raw storage_object_key", () => {
+      process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME = "runiis-test-cloud";
+      const seo = buildEditionSeo(pageWithMedia(), "https://runiis.com");
+      expect(seo.ogImage).toBe(
+        "https://res.cloudinary.com/runiis-test-cloud/image/upload/f_auto,q_auto,c_fill,g_auto,w_1200,ar_1.91:1/runiis/editions/carrera-demo/cover",
+      );
+      expect(seo.jsonLd.image).toEqual([seo.ogImage]);
+    });
+
+    test("ogImage is omitted (null, no jsonLd.image) when delivery is not configured, even with a PUBLISHED asset", () => {
+      delete process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
+      const seo = buildEditionSeo(pageWithMedia(), "https://runiis.com");
+      expect(seo.ogImage).toBeNull();
+      expect(seo.jsonLd).not.toHaveProperty("image");
+    });
   });
 });

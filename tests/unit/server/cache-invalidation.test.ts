@@ -13,6 +13,7 @@ beforeEach(() => revalidateTag.mockReset());
 describe("cacheInvalidationPlan (Master §60)", () => {
   it.each<[CacheInvalidationEvent, string[], boolean]>([
     [{ type: "EditionPublished", editionId: E }, ["editions", `edition:${E}`], false],
+    [{ type: "EditionHidden", editionId: E }, ["editions", `edition:${E}`], true],
     [{ type: "EditionRescheduled", editionId: E }, ["editions", `edition:${E}`], true],
     [{ type: "EditionPostponed", editionId: E }, ["editions", `edition:${E}`], true],
     [{ type: "EditionCanceled", editionId: E }, ["editions", `edition:${E}`], true],

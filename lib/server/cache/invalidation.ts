@@ -12,6 +12,7 @@ export const cacheTags = {
 
 type EditionEvent =
   | "EditionPublished"
+  | "EditionHidden"
   | "EditionRescheduled"
   | "EditionPostponed"
   | "EditionCanceled"
@@ -35,6 +36,7 @@ export type CacheInvalidationPlan = { tags: string[]; immediate: boolean };
 const IMMEDIATE = new Set<CacheInvalidationEvent["type"]>([
   "AvatarRemoved",
   "AccountBanned",
+  "EditionHidden",
   "EditionCanceled",
   "EditionPostponed",
   "EditionRescheduled",
@@ -44,6 +46,7 @@ export function cacheInvalidationPlan(event: CacheInvalidationEvent): CacheInval
   const immediate = IMMEDIATE.has(event.type);
   switch (event.type) {
     case "EditionPublished":
+    case "EditionHidden":
     case "EditionRescheduled":
     case "EditionPostponed":
     case "EditionCanceled":
