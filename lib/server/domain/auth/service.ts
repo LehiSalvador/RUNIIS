@@ -65,13 +65,22 @@ export async function updateMyProfile(supabase: SupabaseClient, changes: z.outpu
   return callRpc(supabase, "update_my_profile", { p_changes: changes }, myProfileSchema);
 }
 
-// ---- OTP sign-in (Master §17; SEC-041/043) ----
+// ---- OTP sign-in (Master §17; SEC-041/043; F3 targeted-lockout mitigation) ----
+
+/** F3: combines the normalized email with the client IP so a single attacker IP hammering a
+ * victim email hits its own tight bucket instead of the victim's -- never used alone. */
+function emailIpSubject(email: string, clientIp: string): string {
+  return `${email}|${clientIp}`;
+}
 
 /** Identical outcome for new/existing/banned/blocked emails: caller always gets a 202 (SEC-043). */
 export async function requestOtp(email: string, clientIp: string): Promise<void> {
   await consumeSubjectRateLimit("auth.otp.ip", clientIp);
   await consumeSubjectRateLimit("auth.otp.email", email);
-  await consumeSubjectRateLimit("auth.otp.email.hour", email);
+  // F3: the tight per-hour bucket is keyed on (email, IP) so one attacker IP cannot exhaust a
+  // victim's quota; the higher email-only ceiling is the backstop against a distributed attacker.
+  await consumeSubjectRateLimit("auth.otp.email.hour", emailIpSubject(email, clientIp));
+  await consumeSubjectRateLimit("auth.otp.email.hour.global", email);
   const { error } = await createAnonClient().auth.signInWithOtp({ email, options: { shouldCreateUser: true } });
   if (error) logEvent("warn", "otp_request_upstream_error", { reason: error.name });
 }
@@ -79,7 +88,9 @@ export async function requestOtp(email: string, clientIp: string): Promise<void>
 /** Verifies the code, persists the session via HttpOnly cookies, then ensures a profile exists. */
 export async function verifyOtp(email: string, code: string, clientIp: string) {
   await consumeSubjectRateLimit("auth.verify.ip", clientIp);
-  await consumeSubjectRateLimit("auth.verify.email", email);
+  // F3: same (email, IP) keying plus a higher email-only ceiling as the OTP request bucket above.
+  await consumeSubjectRateLimit("auth.verify.email", emailIpSubject(email, clientIp));
+  await consumeSubjectRateLimit("auth.verify.email.global", email);
 
   const supabase = await createSessionClient();
   const { data, error } = await supabase.auth.verifyOtp({ email, token: code, type: "email" });

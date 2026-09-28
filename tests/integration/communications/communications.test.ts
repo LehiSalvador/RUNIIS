@@ -152,7 +152,7 @@ describe("communications (T35) integration", () => {
   }, 20_000);
 
   test(
-    "webhook duplicate detection: an unauthenticated Brevo webhook is recorded as evidence once per event, never twice, and never authenticates itself in (SEC-080)",
+    "webhook duplicate detection (F2/SEC-080): unauthenticated deliveries are evidence-only and never dedupe-claim the authenticated key space",
     async () => {
       const payload = JSON.stringify({ event: "delivered", "message-id": `<int-test-${Date.now()}@brevo>`, ts: Math.floor(Date.now() / 1000) });
       const post = () => fetch(new URL("/api/webhooks/brevo", APP_URL), { method: "POST", headers: { "content-type": "application/json" }, body: payload });
@@ -163,12 +163,16 @@ describe("communications (T35) integration", () => {
       expect(second.status).toBe(401);
 
       const providerEventId = queryValue(`select provider_event_id from infra.communication_provider_event
-        where payload_safe ->> 'message_id' = '<int-test-${payload.match(/int-test-(\d+)/)![1]}@brevo>'`);
+        where payload_safe ->> 'message_id' = '<int-test-${payload.match(/int-test-(\d+)/)![1]}@brevo>' limit 1`);
       expect(providerEventId).toBeTruthy();
+      // F2: an unauthenticated delivery is never deduped against another unauthenticated delivery of
+      // the same event -- it holds no claim on the (provider, provider_event_id) key space at all, so
+      // an identical repeat is recorded again as its own evidence row rather than silently occupying
+      // the slot an authentic delivery would need.
       const count = queryValue(`select count(*)::text from infra.communication_provider_event where provider_event_id = '${providerEventId}'`);
-      expect(count).toBe("1"); // identical payload posted twice -> the same provider_event_id -> one row (idempotent)
-      const status = queryValue(`select processing_status from infra.communication_provider_event where provider_event_id = '${providerEventId}'`);
-      expect(status).toBe("UNAUTHENTICATED");
+      expect(count).toBe("2");
+      const statuses = queryValue(`select string_agg(distinct processing_status, ',') from infra.communication_provider_event where provider_event_id = '${providerEventId}'`);
+      expect(statuses).toBe("UNAUTHENTICATED");
     },
     15_000,
   );

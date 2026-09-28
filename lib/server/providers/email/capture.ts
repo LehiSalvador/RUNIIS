@@ -8,8 +8,9 @@ const SEND_TIMEOUT_MS = 5_000;
 
 /**
  * Non-production adapter: delivers into the local Mailpit HTTP API (`POST /api/v1/send`) instead of a
- * real provider. Never used in production (delivery-mode.ts resolves to `refuse` there when unset, and
- * `EMAIL_DELIVERY_MODE=capture` is refused to be selected in production by the caller). Integration tests
+ * real provider. Never used in production: `resolveEmailDeliveryMode` (F5) maps an unset mode, and an
+ * explicit `capture`, to `refuse` whenever `APP_ENV === "production"`, so `selectEmailProvider` never
+ * returns this adapter there. Integration tests
  * read the same Mailpit instance back via its `/api/v1/messages` API (T20's `fetchOtpCode` pattern).
  */
 export function createCaptureEmailProvider(): EmailProvider {

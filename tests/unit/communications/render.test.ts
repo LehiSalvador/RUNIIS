@@ -10,6 +10,16 @@ describe("resolveTemplateVariables", () => {
     expect(resolved.event_path).toBe("https://runiis.mx/eventos/carrera");
   });
 
+  it("F10 (SEC-081): rejects a protocol-relative path variable (//host)", () => {
+    const schema: TemplateVariableSchema = { variables: { event_path: { type: "path", source: "snapshot" } } };
+    expect(() => resolveTemplateVariables(schema, { event_path: "//evil.test/x" }, {}, APP_BASE_URL)).toThrow();
+  });
+
+  it("F10 (SEC-081): rejects a backslash-host path variable (/\\\\host)", () => {
+    const schema: TemplateVariableSchema = { variables: { event_path: { type: "path", source: "snapshot" } } };
+    expect(() => resolveTemplateVariables(schema, { event_path: "/\\evil.test/x" }, {}, APP_BASE_URL)).toThrow();
+  });
+
   it("rejects a url variable that is not same-origin as APP_BASE_URL (A9: links only ever point at our own base)", () => {
     const schema: TemplateVariableSchema = { variables: { confirm_url: { type: "url", source: "system" } } };
     expect(() => resolveTemplateVariables(schema, {}, { confirm_url: "https://evil.example/phish" }, APP_BASE_URL)).toThrow();

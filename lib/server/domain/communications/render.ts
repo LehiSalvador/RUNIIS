@@ -62,8 +62,16 @@ function resolveOne(name: string, def: TemplateVariableDef, raw: unknown, origin
       return Boolean(raw);
     case "path": {
       const path = String(raw);
-      if (!path.startsWith("/")) throw new TemplateVariableError(name, "path variable must be app-relative");
-      return new URL(path, appBaseUrl).toString();
+      // F10/SEC-081: a single leading "/" only, never "//host" (protocol-relative) or "/\host"
+      // (browsers treat a leading backslash as another slash). The origin check below is the
+      // authoritative guard -- both tricks resolve to a foreign origin once combined with
+      // appBaseUrl -- this is defence in depth on top of it.
+      if (!path.startsWith("/") || path.startsWith("//") || path.startsWith("/\\")) {
+        throw new TemplateVariableError(name, "path variable must be app-relative");
+      }
+      const resolved = new URL(path, appBaseUrl);
+      if (resolved.origin !== origin) throw new TemplateVariableError(name, "path variable must resolve within the app origin");
+      return resolved.toString();
     }
     case "url": {
       const url = String(raw);

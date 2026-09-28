@@ -4,7 +4,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public;
 
-select plan(27);
+select plan(32);
 
 create function pg_temp.err(p_sql text) returns jsonb language plpgsql as $$
 declare v_code text; v_detail text;
@@ -76,6 +76,12 @@ select is(pg_temp.errcode_of($$ select private.comms_enqueue_message('REGISTRATI
 -- ---------------------------------------------------------------------------------------------
 -- Generic outbox: FOR UPDATE SKIP LOCKED claim with a lease, reclaim, retry and escalate.
 -- ---------------------------------------------------------------------------------------------
+-- Isolation: the shared local DB may hold due events from dev traffic; park them for this
+-- (rolled back) transaction so the counts below only see this test's rows.
+update infra.outbox_event
+  set available_at = now() + interval '1 day',
+      claim_expires_at = case when status = 'PROCESSING' then now() + interval '1 day' else claim_expires_at end
+  where status in ('PENDING', 'FAILED', 'PROCESSING') and effect_key not like 'TEST:OUTBOX:501:%';
 insert into ids select 'ev1', private.enqueue_outbox('RegistrationConfirmed', 'Registration', gen_random_uuid(),
   'TEST:OUTBOX:501:1', jsonb_build_object('registration_id', gen_random_uuid()));
 
@@ -148,6 +154,31 @@ select is((select processing_status from infra.communication_provider_event wher
   'the unauthenticated row is stored as evidence');
 select is((select active from app.communication_suppression where contact_point_id = current_setting('pgtap.v_contact')::uuid and reason = 'SPAM_COMPLAINT'),
   null, 'an unauthenticated spam event never applies a suppression');
+
+-- ---------------------------------------------------------------------------------------------
+-- F2 (SEC-FIX-1, SEC-080): a forged unauthenticated event must never pre-empt the dedupe key of
+-- the authentic delivery with the same provider_event_id.
+-- ---------------------------------------------------------------------------------------------
+insert into ids select 'm2', private.comms_enqueue_message('REGISTRATION_OPENED',
+  current_setting('pgtap.v_recipient')::uuid, current_setting('pgtap.v_contact')::uuid, 'TEST:DEDUPE:501:2b',
+  'EDITION_SCHEDULE_REVISION', gen_random_uuid(),
+  private.comms_pick_vars('REGISTRATION_OPENED', private.comms_edition_vars('50000000-0000-4000-8000-000000501001')),
+  '50000000-0000-4000-8000-000000501001');
+update app.communication_message set status = 'SENT', provider = 'brevo', provider_message_id = 'brevo-msg-501-2', sent_at = now()
+where communication_message_id = (select value from ids where name = 'm2');
+insert into app.communication_delivery_attempt (communication_message_id, provider, status, attempt_number, provider_message_id, resolved_at)
+values ((select value from ids where name = 'm2'), 'brevo', 'ACCEPTED', 1, 'brevo-msg-501-2', now());
+
+select is(private.record_email_provider_event('brevo', 'evt-501-4', 'brevo-msg-501-2', 'hard_bounce', '{}'::jsonb, false) ->> 'status',
+  'UNAUTHENTICATED', 'a forged unauthenticated event with a guessed key is recorded as evidence only');
+select is(private.record_email_provider_event('brevo', 'evt-501-4', 'brevo-msg-501-2', 'hard_bounce', '{}'::jsonb, false) ->> 'status',
+  'UNAUTHENTICATED', 'a second unauthenticated delivery with the same key never dedupe-blocks (no claim on the authenticated key space)');
+select is(private.record_email_provider_event('brevo', 'evt-501-4', 'brevo-msg-501-2', 'hard_bounce', '{}'::jsonb, true) ->> 'status',
+  'PROCESSED', 'the authentic delivery with the same provider_event_id still applies, unpre-empted by the forged rows (F2)');
+select is((select status from app.communication_message where communication_message_id = (select value from ids where name = 'm2')), 'BOUNCED',
+  'the authentic hard_bounce moved the message to BOUNCED');
+select is((select count(*) from infra.communication_provider_event where provider_event_id = 'evt-501-4'), 3::bigint,
+  'all three rows (two unauthenticated + one authenticated) coexist under the same provider_event_id');
 
 select * from finish();
 rollback;

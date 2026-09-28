@@ -18,7 +18,12 @@ describe("resolveEmailDeliveryMode (A9 matrix)", () => {
   it("honors an explicit mode regardless of APP_ENV", () => {
     expect(resolveEmailDeliveryMode({ EMAIL_DELIVERY_MODE: "live", APP_ENV: "local" })).toBe("live");
     expect(resolveEmailDeliveryMode({ EMAIL_DELIVERY_MODE: "allowlist", APP_ENV: "production" })).toBe("allowlist");
-    expect(resolveEmailDeliveryMode({ EMAIL_DELIVERY_MODE: "capture", APP_ENV: "production" })).toBe("capture");
+  });
+
+  it("F5: refuses an explicit capture in production instead of honouring it (fail closed)", () => {
+    expect(resolveEmailDeliveryMode({ EMAIL_DELIVERY_MODE: "capture", APP_ENV: "production" })).toBe("refuse");
+    expect(resolveEmailDeliveryMode({ EMAIL_DELIVERY_MODE: "capture", APP_ENV: "staging" })).toBe("capture");
+    expect(resolveEmailDeliveryMode({ EMAIL_DELIVERY_MODE: "capture", APP_ENV: "local" })).toBe("capture");
   });
 });
 
@@ -56,5 +61,8 @@ describe("dispatchQuotaPool", () => {
   });
   it("refuse mode claims nothing", () => {
     expect(dispatchQuotaPool({ EMAIL_DELIVERY_MODE: undefined, APP_ENV: "production" })).toBeNull();
+  });
+  it("F5: an explicit capture in production is refused, so it claims nothing either", () => {
+    expect(dispatchQuotaPool({ EMAIL_DELIVERY_MODE: "capture", APP_ENV: "production" })).toBeNull();
   });
 });

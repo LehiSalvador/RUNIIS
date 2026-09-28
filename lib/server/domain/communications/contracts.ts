@@ -4,7 +4,17 @@ import { z } from "zod";
 export const editionIdParamSchema = z.strictObject({ edition: z.uuid() });
 export const reminderIdParamSchema = z.strictObject({ reminderId: z.uuid() });
 
-export const anonymousReminderBodySchema = z.strictObject({ edition_id: z.uuid(), email: z.email().max(254) });
+// F1/SEC-082: `altcha` is the widget's solved ALTCHA payload (base64 JSON), verified server-side
+// before any rate limit is consumed or command runs (lib/server/domain/communications/captcha.ts).
+export const anonymousReminderBodySchema = z.strictObject({ edition_id: z.uuid(), email: z.email().max(254), altcha: z.string().min(1).max(2000) });
+
+export const reminderChallengeResultSchema = z.object({
+  algorithm: z.enum(["SHA-1", "SHA-256", "SHA-512"]),
+  challenge: z.string(),
+  salt: z.string(),
+  signature: z.string(),
+  maxnumber: z.number().int().optional(),
+});
 export const confirmTokenBodySchema = z.strictObject({ token: z.string().regex(/^[0-9a-f]{16,256}$/) });
 
 export const preferencesPatchSchema = z

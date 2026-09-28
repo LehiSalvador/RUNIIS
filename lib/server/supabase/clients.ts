@@ -2,7 +2,7 @@ import "server-only";
 import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
-import { getServerEnv } from "../env";
+import { getServerEnv, isSecureAppBaseUrl } from "../env";
 
 export const SUPABASE_REQUEST_TIMEOUT_MS = 10_000;
 
@@ -25,8 +25,10 @@ export async function createSessionClient(): Promise<SupabaseClient> {
   const cookieStore = await cookies();
   return createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
     global: { fetch: fetchWithTimeout },
-    // SEC-049: the library default is httpOnly:false; session cookies must never be JS-readable.
-    cookieOptions: { httpOnly: true, secure: env.APP_ENV === "production", sameSite: "lax", path: "/" },
+    // SEC-049/F6: the library default is httpOnly:false; session cookies must never be JS-readable.
+    // Secure tracks whether the app is actually served over https (APP_BASE_URL), not just
+    // APP_ENV === "production" -- staging is https too and deserves the same protection.
+    cookieOptions: { httpOnly: true, secure: isSecureAppBaseUrl(env), sameSite: "lax", path: "/" },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {

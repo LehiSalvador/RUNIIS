@@ -19,7 +19,9 @@ const serverEnvSchema = z.object({
   EMAIL_DELIVERY_MODE: z.enum(["live", "allowlist", "capture"]).optional(),
   EMAIL_ALLOWLIST: z.string().optional(),
   BREVO_API_KEY: z.string().optional(),
-  BREVO_WEBHOOK_AUTH_SECRET: z.string().optional(),
+  // F9 (SEC-FIX-1): this static header is the webhook's only authentication factor, so it must be
+  // at least as strong as the other server secrets.
+  BREVO_WEBHOOK_AUTH_SECRET: z.string().min(MIN_SECRET_LENGTH).optional(),
   BREVO_SENDER_EMAIL: z.email().optional(),
   BREVO_SENDER_NAME: z.string().min(1).optional(),
   /** Local dev/test only: Mailpit's HTTP API (never used in production; capture mode does not need Brevo). */
@@ -41,6 +43,12 @@ export function parseServerEnv(source: Record<string, string | undefined>): Serv
     passCredentialKeys.set(Number(version), value);
   }
   return { ...base, passCredentialKeys };
+}
+
+/** F6 (SEC-049): cookies must be Secure whenever the app is actually served over https, not only
+ * in `production` — a staging deploy on https gets the same protection. */
+export function isSecureAppBaseUrl(env: Pick<ServerEnv, "APP_BASE_URL">): boolean {
+  return new URL(env.APP_BASE_URL).protocol === "https:";
 }
 
 let cached: ServerEnv | undefined;
