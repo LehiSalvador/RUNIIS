@@ -18,9 +18,17 @@ describe("cacheInvalidationPlan (Master §60)", () => {
     [{ type: "EditionPostponed", editionId: E }, ["editions", `edition:${E}`], true],
     [{ type: "EditionCanceled", editionId: E }, ["editions", `edition:${E}`], true],
     [{ type: "EditionSlugChanged", editionId: E }, ["editions", `edition:${E}`], false],
+    [{ type: "EditionUpdated", editionId: E }, ["editions", `edition:${E}`], false],
+    [{ type: "EditionContentChanged", editionId: E }, ["editions", `edition:${E}`], false],
+    [{ type: "EditionRegistrationOpened", editionId: E }, ["editions", `edition:${E}`], false],
+    [{ type: "EditionRegistrationPaused", editionId: E }, ["editions", `edition:${E}`], true],
+    [{ type: "EditionRegistrationResumed", editionId: E }, ["editions", `edition:${E}`], false],
+    [{ type: "EditionRegistrationClosed", editionId: E }, ["editions", `edition:${E}`], true],
+    [{ type: "EditionExecutionChanged", editionId: E }, ["editions", `edition:${E}`], false],
     [{ type: "PriceOfferChanged", editionId: E }, ["editions", `edition:${E}`], false],
-    [{ type: "CapacityChanged", editionId: E }, [`edition:${E}`, `availability:${E}`], false],
+    [{ type: "CapacityChanged", editionId: E }, ["editions", `edition:${E}`, `availability:${E}`], false],
     [{ type: "RegistrationRequestCreated", editionId: E }, [`availability:${E}`], false],
+    [{ type: "RegistrationRequestCanceled", editionId: E }, [`availability:${E}`], false],
     [{ type: "RegistrationRequestExpired", editionId: E }, [`availability:${E}`], false],
     [{ type: "RegistrationConfirmed", editionId: E }, [`availability:${E}`], false],
     [{ type: "AvatarApproved", publicProfileId: P }, [`profile:${P}`, "ranking"], false],
@@ -29,6 +37,7 @@ describe("cacheInvalidationPlan (Master §60)", () => {
     [{ type: "DistanceCreditChanged", publicProfileId: P }, [`profile:${P}`, "ranking"], false],
     [{ type: "RankingProjectionUpdated" }, ["ranking"], false],
     [{ type: "RankingSnapshotCreated" }, ["ranking"], false],
+    [{ type: "LegalDocumentPublished" }, ["legal"], false],
   ])("%o", (event, tags, immediate) => {
     expect(cacheInvalidationPlan(event)).toEqual({ tags, immediate });
   });

@@ -52,9 +52,11 @@ export const LEGAL_DOCUMENTS = {
   privacidad: { key: "PRIVACY_NOTICE", title: "Aviso de privacidad", path: "/legal/privacidad" },
 } as const;
 
-// No invalidation event exists for legal publication yet, so a plain TTL bounds staleness.
+// LegalDocumentPublished (T31c-cache-invalidation) invalidates the shared `legal` tag on publish,
+// same as every other editorial read here; the TTL is a fallback bound, not the primary mechanism.
 export const cachedLegalDocument = cache((documentKey: string) =>
   unstable_cache(() => getPublicLegalDocument(createAnonClient(), documentKey), ["public-legal", documentKey], {
+    tags: [cacheTags.legal],
     revalidate: EDITORIAL_TTL_SECONDS,
   })(),
 );

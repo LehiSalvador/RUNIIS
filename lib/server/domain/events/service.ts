@@ -9,7 +9,11 @@ import {
   categorySchema,
   contentBlockSchema,
   createEventBodySchema,
+  deletedContentBlockResultSchema,
+  deletedLocationResultSchema,
+  deletedModalityResultSchema,
   deletedResultSchema,
+  deletedScheduleItemResultSchema,
   editionSchema,
   editionTransitionResultSchema,
   editionUpdateResultSchema,
@@ -172,7 +176,7 @@ export async function setModalityStatus(supabase: SupabaseClient, modalityId: st
   return callRpc(supabase, "set_modality_status", { p_modality_id: modalityId, p_input: body }, modalityStatusResultSchema);
 }
 export async function deleteModality(supabase: SupabaseClient, modalityId: string) {
-  return callRpc(supabase, "delete_modality", { p_modality_id: modalityId }, deletedResultSchema("modality_id"));
+  return callRpc(supabase, "delete_modality", { p_modality_id: modalityId }, deletedModalityResultSchema);
 }
 export async function setModalityCapacity(supabase: SupabaseClient, modalityId: string, body: JsonObject) {
   return callRpc(supabase, "set_modality_capacity", { p_modality_id: modalityId, p_input: body }, modalityCapacityResultSchema);
@@ -233,7 +237,7 @@ export async function updateEditionLocation(supabase: SupabaseClient, locationId
   return callRpc(supabase, "update_edition_location", { p_location_id: locationId, p_input: body }, locationSchema);
 }
 export async function deleteEditionLocation(supabase: SupabaseClient, locationId: string) {
-  return callRpc(supabase, "delete_edition_location", { p_location_id: locationId }, deletedResultSchema("edition_location_id"));
+  return callRpc(supabase, "delete_edition_location", { p_location_id: locationId }, deletedLocationResultSchema);
 }
 
 // ---- Agenda (schedule items) ----
@@ -245,7 +249,7 @@ export async function updateScheduleItem(supabase: SupabaseClient, itemId: strin
   return callRpc(supabase, "update_schedule_item", { p_item_id: itemId, p_input: body }, scheduleItemSchema);
 }
 export async function deleteScheduleItem(supabase: SupabaseClient, itemId: string) {
-  return callRpc(supabase, "delete_schedule_item", { p_item_id: itemId }, deletedResultSchema("edition_schedule_item_id"));
+  return callRpc(supabase, "delete_schedule_item", { p_item_id: itemId }, deletedScheduleItemResultSchema);
 }
 
 // ---- Content blocks ----
@@ -257,7 +261,7 @@ export async function updateContentBlock(supabase: SupabaseClient, blockId: stri
   return callRpc(supabase, "update_content_block", { p_block_id: blockId, p_input: body }, contentBlockSchema);
 }
 export async function deleteContentBlock(supabase: SupabaseClient, blockId: string) {
-  return callRpc(supabase, "delete_content_block", { p_block_id: blockId }, deletedResultSchema("event_content_block_id"));
+  return callRpc(supabase, "delete_content_block", { p_block_id: blockId }, deletedContentBlockResultSchema);
 }
 
 // ---- Kits ----

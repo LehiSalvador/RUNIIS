@@ -8,6 +8,7 @@ export const cacheTags = {
   availability: (editionId: string) => `availability:${editionId}`,
   ranking: "ranking",
   profile: (publicProfileId: string) => `profile:${publicProfileId}`,
+  legal: "legal",
 } as const;
 
 type EditionEvent =
@@ -17,22 +18,39 @@ type EditionEvent =
   | "EditionPostponed"
   | "EditionCanceled"
   | "EditionSlugChanged"
+  | "EditionUpdated"
+  | "EditionContentChanged"
+  | "EditionRegistrationOpened"
+  | "EditionRegistrationPaused"
+  | "EditionRegistrationResumed"
+  | "EditionRegistrationClosed"
+  | "EditionExecutionChanged"
   | "PriceOfferChanged"
   | "RoutePublished";
-type AvailabilityEvent = "CapacityChanged" | "RegistrationRequestCreated" | "RegistrationRequestExpired" | "RegistrationConfirmed";
+type AvailabilityEvent =
+  | "CapacityChanged"
+  | "RegistrationRequestCreated"
+  | "RegistrationRequestCanceled"
+  | "RegistrationRequestExpired"
+  | "RegistrationConfirmed";
 type ProfileEvent = "AvatarApproved" | "AvatarRemoved" | "AccountBanned" | "DistanceCreditChanged";
 type RankingEvent = "RankingProjectionUpdated" | "RankingSnapshotCreated";
+type LegalEvent = "LegalDocumentPublished";
 
 /** Master §60 invalidators. */
 export type CacheInvalidationEvent =
   | { type: EditionEvent | AvailabilityEvent; editionId: string }
   | { type: ProfileEvent; publicProfileId: string }
-  | { type: RankingEvent };
+  | { type: RankingEvent }
+  | { type: LegalEvent };
 
 export type CacheInvalidationPlan = { tags: string[]; immediate: boolean };
 
 // Stale content is never served after these: moderation/ban must disappear from public surfaces,
-// and a canceled or moved Edition must not keep advertising the old state.
+// a canceled/postponed/hidden/rescheduled Edition must not keep advertising the old state, and
+// pausing/closing registration must stop accepting attempts against a page that still says OPEN
+// (Master §60). Opening/resuming registration and ordinary content edits are not safety-critical,
+// so they ride the normal ("max") revalidation semantics instead.
 const IMMEDIATE = new Set<CacheInvalidationEvent["type"]>([
   "AvatarRemoved",
   "AccountBanned",
@@ -40,6 +58,8 @@ const IMMEDIATE = new Set<CacheInvalidationEvent["type"]>([
   "EditionCanceled",
   "EditionPostponed",
   "EditionRescheduled",
+  "EditionRegistrationPaused",
+  "EditionRegistrationClosed",
 ]);
 
 export function cacheInvalidationPlan(event: CacheInvalidationEvent): CacheInvalidationPlan {
@@ -51,12 +71,23 @@ export function cacheInvalidationPlan(event: CacheInvalidationEvent): CacheInval
     case "EditionPostponed":
     case "EditionCanceled":
     case "EditionSlugChanged":
+    case "EditionUpdated":
+    case "EditionContentChanged":
+    case "EditionRegistrationOpened":
+    case "EditionRegistrationPaused":
+    case "EditionRegistrationResumed":
+    case "EditionRegistrationClosed":
+    case "EditionExecutionChanged":
     case "PriceOfferChanged":
     case "RoutePublished":
       return { tags: [cacheTags.editions, cacheTags.edition(event.editionId)], immediate };
     case "CapacityChanged":
-      return { tags: [cacheTags.edition(event.editionId), cacheTags.availability(event.editionId)], immediate };
+      return {
+        tags: [cacheTags.editions, cacheTags.edition(event.editionId), cacheTags.availability(event.editionId)],
+        immediate,
+      };
     case "RegistrationRequestCreated":
+    case "RegistrationRequestCanceled":
     case "RegistrationRequestExpired":
     case "RegistrationConfirmed":
       return { tags: [cacheTags.availability(event.editionId)], immediate };
@@ -68,6 +99,8 @@ export function cacheInvalidationPlan(event: CacheInvalidationEvent): CacheInval
     case "RankingProjectionUpdated":
     case "RankingSnapshotCreated":
       return { tags: [cacheTags.ranking], immediate };
+    case "LegalDocumentPublished":
+      return { tags: [cacheTags.legal], immediate };
   }
 }
 

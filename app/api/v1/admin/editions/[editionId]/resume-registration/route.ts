@@ -1,3 +1,4 @@
+import { invalidateCache } from "@/lib/server/cache/invalidation";
 import { editionIdParamSchema, resumeRegistrationBodySchema } from "@/lib/server/domain/events/contracts";
 import { transitionEdition } from "@/lib/server/domain/events/service";
 import { defineRoute } from "@/lib/server/http/handler";
@@ -9,7 +10,9 @@ export const POST = defineRoute(
     input: { params: editionIdParamSchema, body: resumeRegistrationBodySchema },
     idempotency: "optional",
   },
-  async ({ supabase, input, idempotency }) => ({
-    data: await transitionEdition(supabase, "resume-registration", input.params.editionId, input.body, idempotency?.key ?? null),
-  }),
+  async ({ supabase, input, idempotency }) => {
+    const result = await transitionEdition(supabase, "resume-registration", input.params.editionId, input.body, idempotency?.key ?? null);
+    invalidateCache([{ type: "EditionRegistrationResumed", editionId: input.params.editionId }]);
+    return { data: result };
+  },
 );

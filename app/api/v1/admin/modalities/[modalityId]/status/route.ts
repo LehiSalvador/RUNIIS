@@ -1,3 +1,4 @@
+import { invalidateCache } from "@/lib/server/cache/invalidation";
 import { modalityIdParamSchema, setModalityStatusBodySchema } from "@/lib/server/domain/events/contracts";
 import { setModalityStatus } from "@/lib/server/domain/events/service";
 import { defineRoute } from "@/lib/server/http/handler";
@@ -6,5 +7,9 @@ import { defineRoute } from "@/lib/server/http/handler";
 // are never touched (Master §34).
 export const POST = defineRoute(
   { auth: { staff: ["ADMIN", "OPERATOR"] }, input: { params: modalityIdParamSchema, body: setModalityStatusBodySchema } },
-  async ({ supabase, input }) => ({ data: await setModalityStatus(supabase, input.params.modalityId, input.body) }),
+  async ({ supabase, input }) => {
+    const result = await setModalityStatus(supabase, input.params.modalityId, input.body);
+    invalidateCache([{ type: "EditionContentChanged", editionId: result.modality.edition_id }]);
+    return { data: result };
+  },
 );

@@ -209,6 +209,15 @@ const warningsSchema = z.array(z.record(z.string(), z.unknown()));
 
 export const modalityStatusResultSchema = z.strictObject({ modality: modalitySchema, warnings: warningsSchema });
 export const deletedResultSchema = (key: string) => z.strictObject({ [key]: id, deleted: z.literal(true) });
+// Delete commands whose SQL also returns edition_id (20260928110200_312), so the route layer can
+// fire EditionContentChanged without an extra fetch (T31c-cache-invalidation). Explicit shapes, not
+// a `deletedResultSchema(key).extend(...)` factory: a computed `[key]: id` object literal with a
+// non-literal `key: string` widens every property's inferred TS type (including edition_id) to the
+// union of all value types, because TS reads the computed key as an index signature.
+export const deletedModalityResultSchema = z.strictObject({ modality_id: id, deleted: z.literal(true), edition_id: id });
+export const deletedLocationResultSchema = z.strictObject({ edition_location_id: id, deleted: z.literal(true), edition_id: id });
+export const deletedScheduleItemResultSchema = z.strictObject({ edition_schedule_item_id: id, deleted: z.literal(true), edition_id: id });
+export const deletedContentBlockResultSchema = z.strictObject({ event_content_block_id: id, deleted: z.literal(true), edition_id: id });
 
 export const setModalityCapacityBodySchema = z.strictObject({
   effective_capacity: z.int().min(0).max(1000000).nullable(),
@@ -237,6 +246,9 @@ export const globalCapacityResultSchema = z.strictObject({
 export const priceOfferSchema = z.strictObject({
   price_offer_id: id,
   modality_id: id,
+  // T31c-cache-invalidation: lets the route layer build the `edition:<id>` cache tag (PriceOfferChanged)
+  // without an extra fetch (supabase/migrations/20260928110200_312_cache_invalidation_support.sql).
+  edition_id: id,
   name: z.string(),
   amount_minor: z.number().int(),
   currency: z.string(),

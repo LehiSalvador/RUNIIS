@@ -1,3 +1,4 @@
+import { invalidateCache } from "@/lib/server/cache/invalidation";
 import { editionIdParamSchema, finishEditionBodySchema } from "@/lib/server/domain/events/contracts";
 import { transitionEdition } from "@/lib/server/domain/events/service";
 import { defineRoute } from "@/lib/server/http/handler";
@@ -9,7 +10,9 @@ export const POST = defineRoute(
     input: { params: editionIdParamSchema, body: finishEditionBodySchema },
     idempotency: "optional",
   },
-  async ({ supabase, input, idempotency }) => ({
-    data: await transitionEdition(supabase, "finish", input.params.editionId, input.body, idempotency?.key ?? null),
-  }),
+  async ({ supabase, input, idempotency }) => {
+    const result = await transitionEdition(supabase, "finish", input.params.editionId, input.body, idempotency?.key ?? null);
+    invalidateCache([{ type: "EditionExecutionChanged", editionId: input.params.editionId }]);
+    return { data: result };
+  },
 );
