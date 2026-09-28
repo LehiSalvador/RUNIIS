@@ -25,13 +25,23 @@ function acquireLock(label) {
       if (error.code !== "EEXIST") throw error;
       let ageMs = 0;
       try { ageMs = Date.now() - statSync(lockDir).mtimeMs; } catch { continue; }
-      if (ageMs > staleAfterMs) {
+      if (ageMs > staleAfterMs || lockOwnerIsDead()) {
         rmSync(lockDir, { recursive: true, force: true });
         continue;
       }
       if (Date.now() - started > 45 * 60 * 1000) throw new Error("Timed out waiting for local DB lock");
       sleep(2000);
     }
+  }
+}
+
+function lockOwnerIsDead() {
+  try {
+    const { pid } = JSON.parse(readFileSync(join(lockDir, "owner.json"), "utf8"));
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    return error.code === "ESRCH";
   }
 }
 
@@ -44,11 +54,18 @@ function run(command, args, options = {}) {
   return result.status ?? 1;
 }
 
+// Child commands inherit this marker, so a locked command that itself calls a locked script
+// (e.g. `db:locked -- pnpm test:integration`) runs inside the held lock instead of deadlocking.
+const heldMarker = "RUNIIS_DB_LOCK_HELD";
+
 function withLock(label, fn) {
+  if (process.env[heldMarker] === "1") return fn();
   acquireLock(label);
+  process.env[heldMarker] = "1";
   try {
     return fn();
   } finally {
+    delete process.env[heldMarker];
     releaseLock();
   }
 }
