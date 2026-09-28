@@ -1,0 +1,264 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme {
+  /* color primitives */
+  --color-paper: #F6F7F3;
+  --color-paper-raised: #FFFFFF;
+  --color-paper-sunken: #ECEEE8;
+  --color-ink: #0B0D0E;
+  --color-ink-80: #3A4145;
+  --color-ink-60: #62696D;
+  --color-ink-35: #9AA1A4;
+  --color-divider: #D6DBDE;
+  --color-control: #7C878D;
+  --color-lime: #D7FF3F;
+  --color-lime-deep: #4B6B12;
+  --color-lime-soft: #EEFAC2;
+
+  /* semantic */
+  --color-success: #1B7A43;
+  --color-success-tint: #E3F6EA;
+  --color-success-border: #8FCFA9;
+  --color-warning: #92600B;
+  --color-warning-tint: #FDF0DC;
+  --color-warning-border: #E7B65E;
+  --color-danger: #B3261E;
+  --color-danger-tint: #FBEAEA;
+  --color-danger-border: #E39992;
+  --color-info: #205493;
+  --color-info-tint: #E8F0FB;
+  --color-info-border: #9DC2ED;
+
+  /* focus */
+  --color-ring-light: var(--color-ink);
+  --color-ring-dark: var(--color-lime);
+
+  /* type -- next/font injects --font-archivo-narrow / --font-inter on <html> (app/layout.tsx) with
+     size-adjusted local fallbacks already baked in; these tokens just add the generic fallback. */
+  --font-display: var(--font-archivo-narrow), ui-sans-serif, system-ui, sans-serif;
+  --font-body: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --text-display-xl: clamp(3rem, 6vw, 5rem);
+  --text-display-xl--line-height: 0.95;
+  --text-h1: clamp(2.5rem, 4.5vw, 3.5rem);
+  --text-h1--line-height: 1.05;
+  --text-h2: clamp(2rem, 3.5vw, 2.75rem);
+  --text-h2--line-height: 1.1;
+  --text-h3: 1.625rem;
+  --text-h3--line-height: 1.23;
+  --text-h4: 1.375rem;
+  --text-h4--line-height: 1.27;
+  --text-body-lg: 1.125rem;
+  --text-body-lg--line-height: 1.56;
+  --text-body: 1rem;
+  --text-body--line-height: 1.5;
+  --text-body-sm: 0.875rem;
+  --text-body-sm--line-height: 1.43;
+  --text-label: 0.875rem;
+  --text-label--line-height: 1.29;
+  --text-caption: 0.75rem;
+  --text-caption--line-height: 1.33;
+  --text-button: 0.9375rem;
+  --text-button--line-height: 1.33;
+
+  /* spacing (base 4) */
+  --spacing-0: 0px;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-20: 80px;
+  --spacing-24: 96px;
+  --spacing-32: 128px;
+
+  /* radii */
+  --radius-xs: 6px;
+  --radius-sm: 10px;
+  --radius-control: 12px;
+  --radius-card: 16px;
+  --radius-panel: 20px;
+  --radius-overlay: 24px;
+  --radius-hero: 28px;
+  --radius-full: 999px;
+
+  /* shadow (overlay elevation only) */
+  --shadow-sm: 0 1px 2px rgba(11,13,14,.06);
+  --shadow-md: 0 8px 24px rgba(11,13,14,.10);
+  --shadow-lg: 0 20px 56px rgba(11,13,14,.16);
+
+  /* motion */
+  --ease-standard: cubic-bezier(.2,0,0,1);
+  --ease-exit: cubic-bezier(.4,0,1,1);
+  --duration-micro: 70ms;
+  --duration-fast: 110ms;
+  --duration-control: 150ms;
+  --duration-panel: 240ms;
+  --duration-major: 400ms;
+
+  /* breakpoints (Tailwind v4 default `sm/md/lg/xl/2xl` names reused with Master's own pixel values) */
+  --breakpoint-sm: 480px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1440px;
+
+  /* containers */
+  --container-public: 1280px;
+  --container-reading: 760px;
+  --container-registration: 1040px;
+  --container-modal-form: 640px;
+}
+
+/* Explicit motion utilities (ui-spec §2.6). They also set --tw-duration/--tw-ease, which the
+   tw-animate-css enter/exit keyframes read, so `duration-panel` times dialog animations too. */
+@utility duration-micro {
+  --tw-duration: var(--duration-micro);
+  transition-duration: var(--duration-micro);
+}
+@utility duration-fast {
+  --tw-duration: var(--duration-fast);
+  transition-duration: var(--duration-fast);
+}
+@utility duration-control {
+  --tw-duration: var(--duration-control);
+  transition-duration: var(--duration-control);
+}
+@utility duration-panel {
+  --tw-duration: var(--duration-panel);
+  transition-duration: var(--duration-panel);
+}
+@utility duration-major {
+  --tw-duration: var(--duration-major);
+  transition-duration: var(--duration-major);
+}
+@utility ease-standard {
+  --tw-ease: var(--ease-standard);
+  transition-timing-function: var(--ease-standard);
+}
+@utility ease-exit {
+  --tw-ease: var(--ease-exit);
+  transition-timing-function: var(--ease-exit);
+}
+
+/* Z-index layers (ui-spec §2.9), declared as explicit utilities so stacking order is named at the
+   call site (`z-modal`, `z-toast`) instead of magic numbers. */
+@utility z-base { z-index: 0; }
+@utility z-sticky-header { z-index: 10; }
+@utility z-sticky-cta { z-index: 20; }
+@utility z-dropdown { z-index: 30; }
+@utility z-drawer { z-index: 40; }
+@utility z-modal-backdrop { z-index: 50; }
+@utility z-modal { z-index: 51; }
+/* Not in ui-spec §2.9 (assumed scale): listboxes/popovers opened from inside a modal or drawer must
+   stack above it, so they get their own layer between modal and toast. */
+@utility z-popover { z-index: 55; }
+@utility z-toast { z-index: 60; }
+@utility z-tooltip { z-index: 70; }
+@utility z-scanner-feedback { z-index: 80; }
+@utility z-skip-link { z-index: 100; }
+
+/* Skeleton shimmer (ui-spec §3.1): paper-sunken to paper sweep, 1.2s loop; reduced-motion is a
+   static fill with no sweep (handled by the global prefers-reduced-motion rule above, which zeroes
+   animation-duration). */
+@keyframes skeleton-shimmer {
+  0% { background-position: -150% 0; }
+  100% { background-position: 150% 0; }
+}
+@utility animate-skeleton {
+  background-image: linear-gradient(90deg, var(--color-paper-sunken) 25%, var(--color-paper) 50%, var(--color-paper-sunken) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+
+@layer base {
+  :root {
+    color-scheme: light only; /* Master Section181: no dark mode global V1 */
+  }
+  body {
+    background-color: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* ui-spec §2.8: lime ring inside ink-surface contexts; `--ring` also feeds `outline-ring`. */
+  .surface-ink {
+    --ring: var(--color-ring-dark);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+/* shadcn/Radix variable mapping (ui-spec §2.11) -- aliases shadcn's expected variables to the
+   Foundations tokens above. shadcn is a source of accessible Radix primitives here, never its own
+   visual system: no slate/zinc base palette, no default radius scale. */
+@layer base {
+  :root {
+    --background: var(--color-paper);
+    --foreground: var(--color-ink);
+    --card: var(--color-paper-raised);
+    --card-foreground: var(--color-ink);
+    --popover: var(--color-paper-raised);
+    --popover-foreground: var(--color-ink);
+    --primary: var(--color-ink);
+    --primary-foreground: var(--color-paper);
+    --secondary: var(--color-paper-sunken);
+    --secondary-foreground: var(--color-ink);
+    --muted: var(--color-paper-sunken);
+    --muted-foreground: var(--color-ink-60);
+    --accent: var(--color-lime);
+    --accent-foreground: var(--color-ink);
+    --destructive: var(--color-danger);
+    --destructive-foreground: var(--color-paper);
+    --border: var(--color-divider);
+    --input: var(--color-control);
+    --ring: var(--color-ring-light);
+    --radius: 0.75rem; /* radius-control; components override to card/panel/overlay per spec §3 */
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  /* radius-* utilities come from the primitive @theme block above (radius-control/card/panel/...);
+     shadcn's own lg/md/sm radius scale is intentionally not aliased here to avoid clobbering those
+     role-differentiated tokens (ui-spec §2.5: radii are role-differentiated, never one radius everywhere). */
+}
+
+@layer base {
+  * {
+    border-color: var(--color-divider);
+  }
+  html {
+    text-rendering: optimizeLegibility;
+  }
+}

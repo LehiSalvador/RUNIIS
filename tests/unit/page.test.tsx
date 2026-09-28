@@ -1,10 +1,11 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { expect, test } from "vitest";
-import Page from "@/app/page";
+import Page from "@/app/(public)/page";
 
-test("root page identifies technical RUNIIS bootstrap", () => {
+test("interim home renders the hero headline and primary CTA", () => {
   const html = renderToStaticMarkup(<Page />);
 
-  expect(html).toMatch(/RUNIIS WEB infrastructure ready/);
+  expect(html).toContain("Descubre carreras, inscríbete y consulta tu ranking verificado.");
+  expect(html).toContain('href="/eventos"');
 });
