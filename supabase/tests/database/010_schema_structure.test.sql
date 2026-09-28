@@ -48,10 +48,12 @@ select tables_are('app', array[
   'communication_template_version', 'communication_automation_rule', 'communication_campaign',
   'communication_campaign_recipient', 'communication_message', 'communication_delivery_attempt',
   'communication_provider_usage', 'admin_task']);
-select tables_are('private', array['blocked_identity']);
+select ok(to_regclass('private.blocked_identity') is not null,
+  'private foundation tables exist (open inventory: domain migrations add their own; grant checks cover all)');
 select tables_are('audit', array['audit_log']);
-select tables_are('infra', array['communication_provider_event', 'outbox_event', 'idempotency_record',
-  'worker_run', 'rate_limit_counter']);
+select ok((select count(*) from unnest(array['communication_provider_event', 'outbox_event', 'idempotency_record',
+  'worker_run', 'rate_limit_counter']) t where to_regclass('infra.' || t) is not null) = 5,
+  'infra foundation tables exist (open inventory: domain migrations add their own; grant checks cover all)');
 
 select is_empty($$
   select n.nspname || '.' || c.relname
@@ -63,28 +65,28 @@ select is_empty($$
   select r.rolname || ' -> ' || n.nspname || '.' || c.relname
   from pg_class c join pg_namespace n on n.oid = c.relnamespace
   cross join (values ('anon'), ('authenticated')) r(rolname)
-  where n.nspname in ('public', 'app', 'private', 'audit', 'infra') and c.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
+  where n.nspname in ('public', 'private', 'audit', 'infra') and c.relkind in ('r', 'p', 'v', 'm', 'S', 'f')
     and has_table_privilege(r.rolname, c.oid, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
-$$, 'anon/authenticated hold no relation privileges in public/app/private/audit/infra (including via PUBLIC)');
+$$, 'anon/authenticated hold no relation privileges in public/private/audit/infra (app: SELECT allowlist in 110)');
 
 select is_empty($$
   select grantee || ' -> ' || table_schema || '.' || table_name || '.' || column_name
   from information_schema.column_privileges
-  where table_schema in ('public', 'app', 'private', 'audit', 'infra') and grantee in ('anon', 'authenticated', 'PUBLIC')
-$$, 'anon/authenticated hold no column privileges');
+  where table_schema in ('public', 'private', 'audit', 'infra') and grantee in ('anon', 'authenticated', 'PUBLIC')
+$$, 'anon/authenticated hold no column privileges outside app (app: allowlist in 110)');
 
 select is_empty($$
   select r.rolname || ' -> ' || s.nspname
   from pg_namespace s cross join (values ('anon'), ('authenticated')) r(rolname)
-  where s.nspname in ('app', 'private', 'audit', 'infra') and has_schema_privilege(r.rolname, s.oid, 'USAGE')
-$$, 'anon/authenticated have no USAGE on domain schemas');
+  where s.nspname in ('audit', 'infra') and has_schema_privilege(r.rolname, s.oid, 'USAGE')
+$$, 'anon/authenticated have no USAGE on audit/infra (app/private: grants allowlist in 110)');
 
 select is_empty($$
   select r.rolname || ' -> ' || p.oid::regprocedure::text
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
   cross join (values ('anon'), ('authenticated')) r(rolname)
-  where n.nspname in ('public', 'app', 'private', 'audit', 'infra') and has_function_privilege(r.rolname, p.oid, 'EXECUTE')
-$$, 'anon/authenticated cannot execute any function in public/app/private/audit/infra');
+  where n.nspname in ('app', 'audit', 'infra') and has_function_privilege(r.rolname, p.oid, 'EXECUTE')
+$$, 'anon/authenticated cannot execute any function in app/audit/infra (public/private: catalog lint in 110)');
 
 select is_empty($$
   select p.oid::regprocedure::text

@@ -25,6 +25,8 @@ export async function createSessionClient(): Promise<SupabaseClient> {
   const cookieStore = await cookies();
   return createServerClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY, {
     global: { fetch: fetchWithTimeout },
+    // SEC-049: the library default is httpOnly:false; session cookies must never be JS-readable.
+    cookieOptions: { httpOnly: true, secure: env.APP_ENV === "production", sameSite: "lax", path: "/" },
     cookies: {
       getAll: () => cookieStore.getAll(),
       setAll: (cookiesToSet) => {

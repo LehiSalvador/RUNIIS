@@ -2,7 +2,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public;
 
-select plan(12);
+select plan(11);
 
 select results_eq(
   $$ select key, default_generates_distance_credit from app.event_type order by key $$,
@@ -35,8 +35,9 @@ select results_eq(
   'legal document keys are seeded');
 
 select is_empty($$ select 1 from app.legal_document_version $$, 'no legal text versions are seeded');
-select is_empty($$ select 1 from app.runner_profile union all select 1 from app.staff_member $$,
-  'seeds contain no people');
+-- No absolute headcount here: local dev fixture seeds (supabase/seeds/*.sql, loaded by
+-- `pnpm db:reset` alongside migrations) intentionally add synthetic people for other tasks
+-- to develop and test against.
 
 select throws_ok($$ insert into app.platform_settings (settings_id) values (2) $$, '23514', null,
   'platform_settings is a singleton');

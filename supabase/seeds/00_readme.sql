@@ -1,0 +1,2 @@
+-- Local/test-only synthetic seed files, applied in lexical order by `supabase db reset`.
+-- Never pushed to remote environments. One file per owning task: NN_<domain>.sql.
