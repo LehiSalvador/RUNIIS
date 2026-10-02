@@ -1,0 +1,188 @@
+name: CI
+
+# Phase 1 / Roadmap 7.12: reproducible install, lint, typecheck, unit, pgTAP, integration, build and
+# secret scan on every push to main/staging and on every pull request. No end-to-end/browser suites
+# per push (Tier 3 runs on demand), and no GitHub secret is needed: the database jobs run an
+# ephemeral local Supabase stack and generate throw-away values (scripts/ci-env.mjs).
+
+on:
+  push:
+    branches: [main, staging]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+  NEXT_TELEMETRY_DISABLED: "1"
+  # Same CLI the local pgTAP/integration flow was validated with (supabase/config.toml targets it).
+  SUPABASE_CLI_VERSION: 2.107.0
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+
+  unit:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # No secrets: the build must not need any (pages that read the database at prerender time degrade
+      # to a logged DEPENDENCY_UNAVAILABLE instead of failing the build).
+      - run: pnpm build
+
+  database:
+    name: pgTAP (Supabase local)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@v3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - name: Start local Supabase (migrations + seeds)
+        shell: bash
+        # `supabase start` prints the local API keys on success, so its output is kept out of the log;
+        # on failure only lines that cannot carry a key are shown.
+        run: |
+          if ! supabase start -x studio,imgproxy,vector,realtime,storage,edge-runtime,analytics,functions,meta >"$RUNNER_TEMP/supabase-start.log" 2>&1; then
+            grep -viE 'key|secret|jwt|token|eyJ' "$RUNNER_TEMP/supabase-start.log" | tail -n 80
+            exit 1
+          fi
+      - run: pnpm db:test
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --no-backup
+
+  integration:
+    name: Integration (Supabase local + dev server)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: supabase/setup-cli@v3
+        with:
+          version: ${{ env.SUPABASE_CLI_VERSION }}
+      - name: Start local Supabase (migrations + seeds)
+        shell: bash
+        run: |
+          if ! supabase start -x studio,imgproxy,vector,realtime,storage,edge-runtime,analytics,functions,meta >"$RUNNER_TEMP/supabase-start.log" 2>&1; then
+            grep -viE 'key|secret|jwt|token|eyJ' "$RUNNER_TEMP/supabase-start.log" | tail -n 80
+            exit 1
+          fi
+      - name: Write .env.development.local from the local stack
+        run: node scripts/ci-env.mjs
+      - name: Start the dev server on :3100
+        shell: bash
+        run: |
+          nohup pnpm dev -p 3100 -H 127.0.0.1 >"$RUNNER_TEMP/dev-server.log" 2>&1 &
+          for _ in $(seq 1 60); do
+            if curl -fsS -o /dev/null http://127.0.0.1:3100/api/health; then exit 0; fi
+            sleep 2
+          done
+          echo "dev server did not become healthy"; tail -n 60 "$RUNNER_TEMP/dev-server.log"; exit 1
+      - run: pnpm test:integration
+      - name: Dev server log (on failure)
+        if: failure()
+        run: tail -n 80 "$RUNNER_TEMP/dev-server.log" || true
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --no-backup
+
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install gitleaks (pinned release, checksum verified)
+        shell: bash
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/gitleaks.tgz" "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $RUNNER_TEMP/gitleaks.tgz" | sha256sum -c -
+          tar -xzf "$RUNNER_TEMP/gitleaks.tgz" -C "$RUNNER_TEMP" gitleaks
+      - name: Scan history
+        run: '"$RUNNER_TEMP/gitleaks" git --config .gitleaks.toml --redact --no-banner .'
+      - name: Scan working tree
+        run: '"$RUNNER_TEMP/gitleaks" dir --config .gitleaks.toml --redact --no-banner .'

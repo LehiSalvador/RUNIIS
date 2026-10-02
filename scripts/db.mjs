@@ -3,7 +3,7 @@
 // resets or bulk-writes it runs under a cross-process lock. Never targets a remote project.
 import { spawnSync } from "node:child_process";
 import { mkdirSync, rmSync, writeFileSync, readFileSync, statSync, readdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 const root = resolve(import.meta.dirname, "..");
 const lockDir = join(root, ".local-state", "db.lock");
@@ -16,6 +16,9 @@ function sleep(ms) {
 
 function acquireLock(label) {
   const started = Date.now();
+  // .local-state is gitignored, so a fresh checkout (CI) has no parent yet; the lock itself must stay
+  // non-recursive because EEXIST on it is the "someone holds the lock" signal.
+  mkdirSync(dirname(lockDir), { recursive: true });
   for (;;) {
     try {
       mkdirSync(lockDir, { recursive: false });
