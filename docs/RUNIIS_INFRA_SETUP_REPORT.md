@@ -1,5 +1,7 @@
 # RUNIIS infrastructure setup report
 
+> **HISTORICAL - SUPERSEDED (2026-10-01).** Snapshot of the 2026-09-27 infrastructure setup, kept as history and not the current platform description. Hosting is now Vercel with Netlify as legacy and rollback (`docs/adr/ADR-002-platform-vercel-supabase-scheduler.md`). Two statements below contradict the 2026-10-01 audit (AUD-037): the Vercel project does have `runiismty.com` and `www.runiismty.com` assigned (since 2026-09-27) and it holds 24 sensitive environment entries of UNKNOWN provenance. Current authority: `docs/README.md`.
+
 - Run ID: `aa5dac8b-3818-4a29-ad89-ae569b91b3b2`
 - Updated: 2026-09-27 (America/Mexico_City)
 - Result: `INFRA_SETUP_COMPLETE`

@@ -3,10 +3,17 @@
 Status: accepted · 2026-09-27 · Applies to all V1 work. Functional authority remains
 `docs/RUNIIS_WEB_SYSTEM_MASTER_SPEC_V2.md` (the Master); this ADR fixes how it is realised.
 
+Partially superseded by `ADR-002` (2026-10-01): see the notes marked "Superseded by ADR-002" in Verified context,
+decision 10 and Layout. Everything else in this ADR stands.
+
 ## Verified context
 
 - Next.js App Router app at repository root; Netlify builds root (`netlify.toml`, `@netlify/plugin-nextjs`).
   Production = `main` → `runiismty.com`; staging = branch `staging` → `staging--runiis-web.netlify.app`.
+  **Superseded by ADR-002 (D1, D4, D9):** the hosting target is Vercel; staging is the Vercel Preview of branch `staging`
+  at `staging.runiismty.com`; Netlify is legacy (placeholder and rollback only) and `netlify.toml` and the Netlify
+  plugin were removed from the repository (`c53c431`). Below, "Netlify staging" now reads "the staging host"; the rest of
+  the Supabase environment model of this bullet stands.
 - Supabase (owner decision 2026-09-27): the only authoritative remote database is production
   (`runiis-web-prod`), reached exclusively through its SalvaOps binding and only with artifacts whose
   gates passed locally. Local Docker Supabase hosts development, resets, migrations, RLS/Auth tests,
@@ -70,7 +77,9 @@ Status: accepted · 2026-09-27 · Applies to all V1 work. Functional authority r
     recorded in `infra.worker_run`. Provider-dependent workers (outbox/email dispatch, provider
     reconciliation, avatar processing/cleanup, usage reconcile) are `/api/internal/workers/<key>` route
     handlers authenticated with `INTERNAL_CRON_SECRET` (constant-time compare), triggered by Netlify
-    Scheduled Functions and kicked best-effort after commits. Outbox claim uses
+    Scheduled Functions and kicked best-effort after commits. **Superseded by ADR-002 (D2):** the HTTP workers are
+    triggered by Supabase `pg_cron` + `pg_net` with the secret and base URL in Vault, not by Netlify Scheduled
+    Functions; the rest of this decision stands. Outbox claim uses
     `FOR UPDATE SKIP LOCKED` + lease, exponential backoff with jitter, `ESCALATED` + AdminTask.
 11. **Providers behind interfaces** (`lib/server/providers/*`): EmailProvider (Brevo; Mailpit locally),
     ObjectStorage (Cloudinary, folders `runiis/<env>/...`, signed server-side uploads, pending assets
@@ -157,7 +166,7 @@ components/ui/            design-system primitives;  components/<feature>/  feat
 supabase/migrations/      <timestamp>_<nnn>_<name>.sql;  supabase/tests/database/*.test.sql (pgTAP)
 supabase/seed.sql         synthetic local/test data only
 tests/unit, tests/integration, tests/e2e, tests/load
-netlify/functions/        scheduled triggers only
+netlify/functions/        scheduled triggers only   [Superseded by ADR-002 (D2, D9): removed in c53c431]
 scripts/                  local tooling
 ```
 
