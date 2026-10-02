@@ -1,3 +1,7 @@
+---
+type: master
+status: accepted
+---
 RUNIIS WEB — SYSTEM MASTER SPECIFICATION V2
 
 Estado del documento: fuente de verdad funcional y técnica para RUNIIS WEB V1.
