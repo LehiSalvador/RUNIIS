@@ -8,3 +8,9 @@ useDefault = true
 description = "Synthetic SQL test fixtures and local seeds (generic-api-key only)"
 targetRules = ["generic-api-key"]
 paths = ['''^supabase/tests/database/[^/]+\.test\.sql$''', '''^supabase/seeds/[^/]+\.sql$''']
+
+[[allowlists]]
+description = "Hosting-state label in audit/roadmap docs (CURRENT_LEGACY_HOSTING_PENDING_MIGRATION is not a Netlify token)"
+targetRules = ["netlify-access-token"]
+regexTarget = "match"
+regexes = ['''CURRENT_LEGACY_HOSTING_PENDING_MIGRATION''']
