@@ -14,3 +14,14 @@ description = "Hosting-state label in audit/roadmap docs (CURRENT_LEGACY_HOSTING
 targetRules = ["netlify-access-token"]
 regexTarget = "match"
 regexes = ['''CURRENT_LEGACY_HOSTING_PENDING_MIGRATION''']
+
+# Known history finding: commit 17fc6c3 carried an EMPTY placeholder (`GOOGLE_CLIENT_SECRET=`, line 6) in
+# .env.example; the "secret" is the variable name itself, there is no value. Narrow on purpose: this
+# exact commit AND this exact file AND the generic rule (condition AND), so no other path, commit or
+# provider-specific rule is relaxed.
+[[allowlists]]
+description = "Empty placeholder variable in .env.example at commit 17fc6c3 (no secret value)"
+condition = "AND"
+targetRules = ["generic-api-key"]
+commits = ["17fc6c36c33ac8d335acec663ac36bbbfbba0c03"]
+paths = ['''^\.env\.example$''']
