@@ -21,7 +21,7 @@ Updated by Phase 1 `P1-PLATFORM-REBASE` (2026-10-01).
 | `docs/adr/ADR-002-platform-vercel-supabase-scheduler.md` | Hosting Vercel, Netlify legacy, scheduler `pg_cron`+`pg_net`, client IP, environment model, ALTCHA, GPX limit, noindex, OTP length, Netlify decommission | Authority |
 | `docs/specs/T11-appsec-threat-model.md` | Threat model and `SEC-nnn` requirements cited by code and ADR-001 | Approved derived spec (verbatim copy) |
 | `docs/specs/T12-ux-spec.md` | UX specification | Approved derived spec (verbatim copy) |
-| `docs/specs/T13-ui-spec.md`, `docs/specs/T13-contrast.log` | UI specification and its contrast evidence | Approved derived spec (verbatim copy) |
+| `docs/specs/T13-ui-spec.md`, `docs/specs/T13-contrast.txt` | UI specification and its contrast evidence (source name `contrast.log`) | Approved derived spec (verbatim copy) |
 | `docs/RUNIIS_EXECUTION_ROADMAP_V1.md` | Execution Roadmap | Plan; replaces Master sections 222-223 as the execution plan |
 | `docs/execution/phase-1/PHASE_1_PACKET.md` | Phase 1 scope, owner decisions, risks | Phase control document |
 | `docs/runbooks/vercel-cutover-and-rollback.md` | Production cutover and DNS rollback procedure | Operational, prepared and not executed |
