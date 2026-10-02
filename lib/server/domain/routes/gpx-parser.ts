@@ -9,7 +9,22 @@ import { geoJsonLineStringInputSchema, poiInputSchema, poiTypeSchema } from "./c
 // anything, never trusts fast-xml-parser defaults, and only ever produces a DRAFT RouteRevision
 // input (the caller enforces DRAFT; this module has no DB access at all).
 
-const MAX_BYTES = 5_000_000; // SEC-100: enforced on the decoded byte length, not the base64 string.
+// SEC-100: enforced on the decoded byte length, not the base64 string.
+// AUD-030 / P1-AC-13: Vercel Functions reject any request body over 4.5 MB (413 FUNCTION_PAYLOAD_TOO_LARGE,
+// https://vercel.com/docs/functions/limitations#request-body-size) before the app runs. The JSON/base64
+// envelope inflates the file by 4/3, so the former 5 MB decoded cap (~6.7 MB envelope) could never arrive.
+// 3_250_000 decoded bytes -> 4_333_336 base64 chars -> at most 4_335_384 envelope bytes, under the
+// 4_400_000 request cap below, which stays under the documented 4_500_000 platform limit.
+export const GPX_MAX_DECODED_BYTES = 3_250_000;
+/** Largest base64 text that decodes to GPX_MAX_DECODED_BYTES (4 chars per 3 bytes, padded). */
+export const GPX_MAX_BASE64_CHARS = Math.ceil(GPX_MAX_DECODED_BYTES / 3) * 4;
+/** Documented Vercel Functions request-body limit (4.5 MB, decimal) -- never exceed. */
+export const VERCEL_MAX_REQUEST_BODY_BYTES = 4_500_000;
+/** Budget for `{"source_filename":"...","gpx_base64":"..."}` around the base64 (filename <= 200 chars, escaped). */
+export const GPX_ENVELOPE_OVERHEAD_BYTES = 2_048;
+/** JSON envelope cap handed to defineRoute; headroom under the platform limit is deliberate. */
+export const GPX_MAX_REQUEST_BODY_BYTES = 4_400_000;
+const MAX_BYTES = GPX_MAX_DECODED_BYTES;
 const MAX_POINTS = 200_000;
 const MAX_POIS = 200;
 const MAX_NESTED_TAGS = 20;

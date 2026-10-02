@@ -2,7 +2,14 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test } from "vitest";
 import { AppError } from "@/lib/server/http/errors";
-import { parseGpxSafely } from "@/lib/server/domain/routes/gpx-parser";
+import {
+  GPX_ENVELOPE_OVERHEAD_BYTES,
+  GPX_MAX_BASE64_CHARS,
+  GPX_MAX_DECODED_BYTES,
+  GPX_MAX_REQUEST_BODY_BYTES,
+  VERCEL_MAX_REQUEST_BODY_BYTES,
+  parseGpxSafely,
+} from "@/lib/server/domain/routes/gpx-parser";
 
 // SEC-100/101 fixtures: every case here must return a fast VALIDATION_ERROR with bounded memory, or
 // (for the valid fixtures) a clean, schema-conformant GeoJSON LineString + POI list.
@@ -81,19 +88,45 @@ describe("parseGpxSafely: SEC-100 hostile-input rejection (fast, bounded memory)
     expect(err.details.reason).toBe("unsafe_xml_construct");
   });
 
-  test("a file over 5MB (decoded) is rejected", () => {
+  test("a file over the decoded cap is rejected (never truncated)", () => {
     const oversized = Buffer.from(`<gpx><trk><trkseg>${"<trkpt lat=\"25.67\" lon=\"-100.30\" />".repeat(200_000)}</trkseg></trk></gpx>`);
-    expect(oversized.byteLength).toBeGreaterThan(5_000_000);
+    expect(oversized.byteLength).toBeGreaterThan(GPX_MAX_DECODED_BYTES);
     const err = expectValidationError(() => parseGpxSafely(oversized.toString("base64")));
+    expect(err.details.reason).toBe("file_too_large");
+    expect(err.details.max_bytes).toBe(GPX_MAX_DECODED_BYTES);
+  });
+
+  test("AUD-030: the decoded cap is exact -- cap bytes parse, cap + 1 bytes are rejected", () => {
+    const head = '<gpx><trk><trkseg><trkpt lat="25.67" lon="-100.30"/><trkpt lat="25.68" lon="-100.31"/></trkseg></trk>';
+    const tail = "</gpx>";
+    const pad = (n: number) => " ".repeat(n - Buffer.byteLength(head) - Buffer.byteLength(tail));
+    const atCap = Buffer.from(`${head}${pad(GPX_MAX_DECODED_BYTES)}${tail}`);
+    expect(atCap.byteLength).toBe(GPX_MAX_DECODED_BYTES);
+    expect(parseGpxSafely(atCap.toString("base64")).geometry.coordinates).toHaveLength(2);
+
+    const overCap = Buffer.from(`${head}${pad(GPX_MAX_DECODED_BYTES + 1)}${tail}`);
+    expect(overCap.byteLength).toBe(GPX_MAX_DECODED_BYTES + 1);
+    const err = expectValidationError(() => parseGpxSafely(overCap.toString("base64")));
     expect(err.details.reason).toBe("file_too_large");
   });
 
-  test("more than 200k points is rejected (kept under the 5MB cap so the point-count check itself is exercised)", () => {
+  test("AUD-030: a maximum-size import envelope fits under the documented Vercel 4.5 MB request-body limit", () => {
+    const base64 = Buffer.alloc(GPX_MAX_DECODED_BYTES, 0x61).toString("base64");
+    expect(base64.length).toBe(GPX_MAX_BASE64_CHARS);
+    // Worst case filename: 200 chars, every one escaped by JSON as a 6-byte \uXXXX sequence.
+    const worstCaseFilename = "\u0001".repeat(200);
+    const envelopeBytes = Buffer.byteLength(JSON.stringify({ source_filename: worstCaseFilename, gpx_base64: base64 }));
+    expect(envelopeBytes - base64.length).toBeLessThanOrEqual(GPX_ENVELOPE_OVERHEAD_BYTES);
+    expect(envelopeBytes).toBeLessThanOrEqual(GPX_MAX_REQUEST_BODY_BYTES);
+    expect(GPX_MAX_REQUEST_BODY_BYTES).toBeLessThan(VERCEL_MAX_REQUEST_BODY_BYTES);
+    expect(VERCEL_MAX_REQUEST_BODY_BYTES).toBe(4_500_000);
+  });
+
+  test("a file too large to reach the 200k-point check is stopped by the byte cap first (smallest trkpt is 24 bytes)", () => {
     const points = `<trkpt lat="1" lon="1"/>`.repeat(200_001);
     const xml = `<gpx><trk><trkseg>${points}</trkseg></trk></gpx>`;
-    expect(Buffer.byteLength(xml)).toBeLessThan(5_000_000);
     const err = expectValidationError(() => parseGpxSafely(Buffer.from(xml).toString("base64")));
-    expect(err.details.reason).toBe("too_many_points");
+    expect(err.details.reason).toBe("file_too_large");
   });
 
   test("nesting deeper than the configured limit is rejected", () => {
