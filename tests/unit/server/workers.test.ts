@@ -4,6 +4,7 @@ import { POST as productionRoute } from "@/app/api/internal/workers/[worker]/rou
 import { isAuthorizedWorkerRequest } from "@/lib/server/workers/auth";
 import { findWorker, workerRegistry, type WorkerRegistry } from "@/lib/server/workers/registry";
 import { createWorkerRoute } from "@/lib/server/workers/route";
+import type { WorkerRunRecorder } from "@/lib/server/workers/runs";
 
 const SECRET = "worker-secret-for-unit-tests-0000000000";
 const ENV_SECRET = process.env.INTERNAL_CRON_SECRET!;
@@ -42,10 +43,13 @@ describe("worker registry", () => {
   });
 });
 
+/** Recorder double: these tests cover routing; recording has its own file (worker-runs.test.ts). */
+const noRecorder: WorkerRunRecorder = { start: async () => "00000000-0000-4000-8000-000000000001", finish: async () => {} };
+
 describe("worker route", () => {
   const run = vi.fn(async () => ({ processed: 3 }));
   const registry: WorkerRegistry = { "outbox-dispatch": run };
-  const route = createWorkerRoute(registry, () => SECRET);
+  const route = createWorkerRoute(registry, () => SECRET, noRecorder);
 
   it("returns 401 without the secret, even for unknown workers, and does not run anything", async () => {
     for (const worker of ["outbox-dispatch", "does-not-exist"]) {
@@ -76,7 +80,7 @@ describe("worker route", () => {
   it("hides worker failures behind INTERNAL_ERROR", async () => {
     const logs: string[] = [];
     vi.spyOn(console, "error").mockImplementation((line: unknown) => void logs.push(String(line)));
-    const failing = createWorkerRoute({ broken: async () => { throw new Error("smtp password=hunter2"); } }, () => SECRET);
+    const failing = createWorkerRoute({ broken: async () => { throw new Error("smtp password=hunter2"); } }, () => SECRET, noRecorder);
     const response = await failing(call({ authorization: `Bearer ${SECRET}` }), params("broken"));
     expect(response.status).toBe(500);
     expect(await response.text()).not.toContain("hunter2");

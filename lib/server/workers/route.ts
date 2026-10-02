@@ -7,10 +7,15 @@ import { newRequestId, runWithRequestId } from "../http/request-id";
 import { logEvent } from "../log";
 import { isAuthorizedWorkerRequest } from "./auth";
 import { findWorker, type WorkerRegistry } from "./registry";
+import { beginWorkerRun, createWorkerRunRecorder, endWorkerRun, outcomeFromError, outcomeFromSummary, type WorkerRunRecorder } from "./runs";
 
 type WorkerRouteContext = { params: Promise<{ worker: string }> };
 
-export function createWorkerRoute(registry: WorkerRegistry, readSecret: () => string = () => getServerEnv().INTERNAL_CRON_SECRET) {
+export function createWorkerRoute(
+  registry: WorkerRegistry,
+  readSecret: () => string = () => getServerEnv().INTERNAL_CRON_SECRET,
+  recorder: WorkerRunRecorder = createWorkerRunRecorder(),
+) {
   return (request: NextRequest, context: WorkerRouteContext): Promise<Response> => {
     const requestId = newRequestId();
     return runWithRequestId(requestId, async () => {
@@ -26,9 +31,20 @@ export function createWorkerRoute(registry: WorkerRegistry, readSecret: () => st
         const worker = findWorker(registry, key);
         if (!worker) throw new AppError("NOT_FOUND");
 
+        // Master §150: one infra.worker_run per authorized, known invocation. Unauthorized and unknown
+        // requests returned above and record nothing; recording failures are logged, never thrown.
         const startedAt = Date.now();
-        const summary = await worker({ requestId });
-        logEvent("info", "worker_run", { worker: key, duration_ms: Date.now() - startedAt });
+        const workerRunId = await beginWorkerRun(recorder, key);
+        let summary;
+        try {
+          summary = await worker({ requestId });
+        } catch (error) {
+          await endWorkerRun(recorder, key, workerRunId, outcomeFromError(error, Date.now() - startedAt));
+          throw error;
+        }
+        const durationMs = Date.now() - startedAt;
+        await endWorkerRun(recorder, key, workerRunId, outcomeFromSummary(key, summary, durationMs));
+        logEvent("info", "worker_run", { worker: key, duration_ms: durationMs });
         const response = successResponse(requestId, summary, { meta: { worker: key } });
         response.headers.set("Cache-Control", "no-store");
         return response;
