@@ -82,7 +82,7 @@ SUP-006. UNCLAIMED profile persistente como sustituto de Guest. Sustituido por G
 SUP-007. Moderación automática obligatoria con Rekognition. Sustituida por revisión humana.
 SUP-008. Apple Sign-In V1. Fuera.
 SUP-009. Supabase heredado como base a migrar. Fuera. El proyecto actual se considera nuevo/limpio.
-SUP-010. Vercel Hobby como hosting productivo asumido. No vigente. El hosting se decide por la matriz de infraestructura y gate de producción.
+SUP-010. Netlify como hosting productivo final. Sustituido. Hosting objetivo CLOSED: Vercel (decisión del propietario, 2026-10-01); Netlify queda solo como legado y rollback hasta un cutover validado (ADR-002). El plan de hosting debe ser compatible con los términos vigentes del proveedor para la operación real de RUNIIS (ver §11 y OWN-01). Asumir un plan de hosting sin verificar esa compatibilidad tampoco es vigente.
 
 4. DEFINICIÓN DEL PRODUCTO
 
@@ -217,7 +217,7 @@ Tecnología:
 - PostgreSQL/Supabase;
 - Supabase Auth;
 - PostGIS;
-- Netlify como hosting inicial seleccionado;
+- Vercel como hosting objetivo (Netlify: legado y rollback hasta cutover validado; ADR-002);
 - Cloudinary como proveedor inicial de media;
 - Brevo como transporte de email inicial;
 - MapLibre GL JS;
@@ -238,6 +238,8 @@ El núcleo V1 no debe requerir una suscripción mensual obligatoria para iniciar
 Se permiten free tiers y servicios que eventualmente tengan plan de pago siempre que V1 funcione sin suscripción obligatoria, los límites estén documentados, el consumo sea observable, exista gate de capacidad antes de producción y el dominio no quede acoplado irreversiblemente al proveedor.
 
 Stripe/Mercado Pago no aplican a V1.
+
+Condición de hosting: el plan de hosting debe ser compatible con los términos de uso vigentes del proveedor para la operación real de RUNIIS; el gate de producción lo verifica en la fecha de despliegue (§192). Posición registrada del propietario (OWN-01, 2026-10-01): V1 no procesa ningún pago en la plataforma; la inscripción de pago es solo una cotización por WhatsApp con confirmación humana y el pago integrado queda para V2. Riesgo residual declarado: las fair-use guidelines de Vercel para el plan Hobby mencionan "requesting or processing payment from visitors". Este documento no interpreta los términos del proveedor; la condición se vuelve a confirmar antes de la apertura pública de ediciones de pago EXTERNAL_WHATSAPP (PEND-HOSTING-001).
 
 12. SCHEMAS POSTGRESQL
 
@@ -265,6 +267,7 @@ No usar float para dinero. No usar email como PK. No almacenar passwords. No alm
 14. EXTENSIONES
 
 Requeridas: pgcrypto, pg_trgm, unaccent y postgis.
+Requeridas para el scheduler de workers (ADR-002): pg_cron (workers DB-only y disparadores), pg_net (POST HTTP a los workers de la aplicación) y supabase_vault (URL base y secreto del disparador por entorno).
 Opcional si se utiliza constraint temporal avanzado: btree_gist.
 
 15. AUTH Y RUNNER PROFILE LIFECYCLE
@@ -3016,6 +3019,14 @@ integrity-scan: cada hora.
 
 provider-usage-reconcile: diario/frecuencia necesaria.
 
+Mecanismo de disparo (ADR-002):
+
+- Workers DB-only (expire-registration-requests, close-registration-windows, archive-guests): pg_cron ejecuta la función SQL private.worker_<key>() y la ejecución se registra en infra.worker_run.
+- Workers HTTP (outbox-dispatch cada 1 min, issue-pending-credentials cada 5 min, communication-reconcile cada 15 min, provider-usage-reconcile diario a las 00:05 UTC): pg_cron + pg_net envían POST /api/internal/workers/<key> con Authorization Bearer INTERNAL_CRON_SECRET. La URL base y el secreto viven en Supabase Vault por entorno (runiis_worker_base_url, runiis_worker_cron_secret); un entorno sin esas entradas no dispara nada.
+- No se usan Vercel Cron ni funciones programadas de Netlify (retiradas del código).
+- Tolerancia de latencia: los workers P0/P1 toleran minutos; un disparo perdido se recupera en el siguiente tick. Los workers son idempotentes (claims con lease y FOR UPDATE SKIP LOCKED, dedupe_key), por lo que un disparo duplicado es inocuo.
+- Los workers aún no implementados se disparan sobre este mismo mecanismo.
+
 153. RANKING PERIOD MANAGER
 
 No cierra automáticamente por reloj.
@@ -3489,7 +3500,7 @@ POST /api/v1/admin/editions/:editionId/cancel
 POST /api/v1/admin/editions/:editionId/modalities
 PATCH /api/v1/admin/modalities/:id
 PATCH /api/v1/admin/modalities/:id/capacity
-PATCH /api/v1/admin/editions/:id/global-capacity
+POST /api/v1/admin/editions/:editionId/capacity (capacidad global de la Edition; implementado así)
 POST /api/v1/admin/modalities/:id/prices
 PATCH /api/v1/admin/prices/:id
 
@@ -3581,8 +3592,9 @@ POST /api/v1/events/:editionId/favorite
 DELETE /api/v1/events/:editionId/favorite
 POST /api/v1/events/:editionId/reminders
 DELETE /api/v1/reminders/:id
-POST /api/v1/reminders/anonymous
-POST /api/v1/reminders/anonymous/confirm
+GET /api/v1/reminders/challenge
+POST /api/v1/reminders
+POST /api/v1/reminders/confirm
 PATCH /api/v1/me/communication-preferences
 
 Admin:
@@ -3596,7 +3608,11 @@ POST /api/v1/admin/communications/campaigns/:id/send
 POST /api/v1/admin/communications/campaigns/:id/cancel
 
 Webhook:
-POST /api/webhooks/email-provider
+POST /api/webhooks/brevo
+
+POST /api/webhooks/brevo es el adaptador del EmailProvider activo (Brevo); el contrato de dominio de Communication sigue siendo neutral al proveedor y otro proveedor tendría su propio adaptador bajo /api/webhooks/<proveedor>.
+
+Recordatorio anónimo: GET /api/v1/reminders/challenge entrega el desafío ALTCHA; POST /api/v1/reminders exige la solución en el campo altcha además de los límites por IP y por email (SEC-082, ADR-002). POST /api/v1/reminders/confirm confirma el consentimiento con el token del email.
 
 177. SANCTION API
 
@@ -3895,10 +3911,14 @@ seleccionado V1 para DB/Auth/RLS/PostGIS.
 No suscripción obligatoria inicial.
 Production gate verifica cuotas y términos actuales.
 
-Netlify:
-seleccionado como hosting inicial V1.
-Production gate verifica compatibilidad comercial, capacidad y límites en la fecha de despliegue.
+Vercel:
+hosting objetivo V1 (decisión del propietario, 2026-10-01).
+Production gate verifica plan, términos de uso frente a §11 (OWN-01), capacidad y límites en la fecha de despliegue.
 Si deja de ser apto, se sustituye HostingRuntime sin cambiar contratos de dominio.
+
+Netlify:
+legado: placeholder público y rollback hasta cutover validado. No recibe arquitectura nueva.
+Su retiro (dominio, variables, sitio) requiere cutover validado y aprobación final del propietario (OPEN-05).
 
 Brevo:
 seleccionado como email transport/SMTP inicial.
@@ -3942,9 +3962,11 @@ Google:
 GOOGLE_CLIENT_ID
 GOOGLE_CLIENT_SECRET
 
-Netlify:
-NETLIFY_SITE_ID
-NETLIFY_AUTH_TOKEN si CLI/API automation lo requiere.
+Vercel (hosting objetivo):
+VERCEL_TOKEN, VERCEL_ORG_ID y VERCEL_PROJECT_ID solo si CLI/API automation lo requiere; se gestionan por SalvaOps y nunca llegan a la aplicación.
+
+Netlify (legado hasta su retiro, OPEN-05):
+NETLIFY_SITE_ID y NETLIFY_AUTH_TOKEN solo para rollback o retiro.
 
 Brevo:
 BREVO_API_KEY
@@ -3960,10 +3982,14 @@ CLOUDINARY_API_KEY
 CLOUDINARY_API_SECRET
 
 Application:
-PASS_CREDENTIAL_ENCRYPTION_KEY_V1
-INTERNAL_CRON_SECRET cuando aplique
+APP_ENV (local | staging | production; obligatoria en todo entorno)
 APP_BASE_URL
-DEFAULT_WHATSAPP_PHONE_E164
+PASS_CREDENTIAL_ENCRYPTION_KEY_V1
+INTERNAL_CRON_SECRET (obligatoria en todo entorno; el valor de cada entorno también se guarda en Supabase Vault como runiis_worker_cron_secret, ADR-002)
+EMAIL_DELIVERY_MODE (live | allowlist | capture; sin valor resuelve a capture fuera de producción y a rechazo de envíos en producción)
+EMAIL_ALLOWLIST (obligatoria con EMAIL_DELIVERY_MODE=allowlist)
+
+No usadas por la aplicación: CRON_SECRET (el scheduler no es Vercel Cron) y DEFAULT_WHATSAPP_PHONE_E164 (retirada; el número por defecto vive en PlatformSettings.default_whatsapp_phone_e164, PEND-OPS-001).
 
 PostHog:
 NEXT_PUBLIC_POSTHOG_KEY
@@ -4011,6 +4037,15 @@ Reglas:
 - analytics etiqueta entorno;
 - migrations avanzan en orden;
 - no compartir SERVICE/SECRET keys entre entornos sin necesidad.
+
+Modelo de entornos (decisión del propietario, 2026-09-27; mapeo a Vercel y Supabase en ADR-002):
+
+- Local: Next local, Supabase Docker, Mailpit, EMAIL_DELIVERY_MODE=capture. Es el entorno de desarrollo y de verificación (pruebas DB, integración, E2E).
+- Staging: rama git staging, Vercel Preview con el dominio staging.runiismty.com asignado a la rama, APP_ENV=staging, backend Supabase remoto no productivo y no autoritativo, EMAIL_DELIVERY_MODE=allowlist con la dirección de la cuenta del propietario. Solo build, UI y smoke no destructivo.
+- Preview genérico (otras ramas y PR): sin base de datos ni secretos de servidor de producción, valores no productivos, EMAIL_DELIVERY_MODE=capture, deployments protegidos por la autenticación de Vercel.
+- Production: rama main, Vercel Production, runiismty.com, APP_ENV=production, EMAIL_DELIVERY_MODE=live, Supabase de producción como único remoto autoritativo (acceso por SalvaOps).
+- Las variables de Vercel se separan por entorno: ninguna variable con valor de producción se comparte con Preview.
+- robots.txt, los metadatos y el encabezado X-Robots-Tag son noindex siempre que APP_ENV != production.
 
 196. BACKUP AND RECOVERY
 
@@ -4065,7 +4100,7 @@ closure_pending_count
 distance_credit_integrity_cases
 ranking_consolidating_age
 ranking_last_refresh
-R2_errors
+media_provider_errors
 auth_error_rate
 scanner_error_rate
 
@@ -4149,8 +4184,8 @@ Todo cambio DB:
 - DB tests;
 - advisor/lint;
 - review;
-- staging;
-- production.
+- verificación local reproducible (Supabase Docker; el Supabase remoto staging no es autoritativo ni un paso obligatorio);
+- production, vía SalvaOps y solo con artefactos que pasaron la verificación local.
 
 Separar data migration de schema migration cuando el volumen lo requiera.
 
@@ -4592,14 +4627,24 @@ No bloquea arquitectura.
 Bloquea final polish.
 
 PEND-INFRA-001:
-credenciales reales.
+credenciales reales por entorno (Production y Staging separados).
 No bloquea mocks/local.
 Bloquea integración real.
 
 PEND-INFRA-002:
-dominio/DNS.
+dominio/DNS. runiismty.com está registrado en Vercel con DNS en Vercel; el cambio de DNS de producción (cutover desde el placeholder de Netlify) sigue pendiente.
 No bloquea desarrollo.
 Bloquea producción.
+
+PEND-DOMAIN-RENEWAL:
+renovación de runiismty.com (registrado en Vercel, expira 2027-09-24, renovación automática desactivada). Renovar implica un pago: decisión del propietario (OWN-02).
+No bloquea desarrollo.
+Bloquea la continuidad del dominio.
+
+PEND-HOSTING-001:
+reconfirmar los términos de uso de Vercel frente a §11 (OWN-01) antes de la apertura pública de ediciones de pago EXTERNAL_WHATSAPP.
+No bloquea desarrollo ni Preview.
+Bloquea esa apertura pública.
 
 PEND-OPS-001:
 número WhatsApp default real.
@@ -4617,6 +4662,8 @@ No bloquea desarrollo.
 Bloquea production readiness.
 
 222. CLAUDE ORCHESTRATION ENVELOPE
+
+ESTADO: HISTÓRICO. Este modelo de orquestación fue sustituido por SalvaOps Web Development con un orquestador nuevo por fase; el plan de ejecución vigente es docs/RUNIIS_EXECUTION_ROADMAP_V1.md. Se conserva solo para impedir que el modelo anterior se reintroduzca. La última frase de esta sección (no autoriza deploy productivo, credenciales, campañas, DNS ni compras) sigue vigente.
 
 Claude es orquestador.
 
@@ -4637,6 +4684,8 @@ Debe:
 Este documento no autoriza automáticamente deploy productivo, credenciales no entregadas, campañas reales, DNS o compra de servicios.
 
 223. ORDEN DE IMPLEMENTACIÓN
+
+ESTADO: HISTÓRICO como plan de ejecución. Sustituido por el Execution Roadmap por resultados (docs/RUNIIS_EXECUTION_ROADMAP_V1.md); la lista conserva valor solo como grafo de dependencias.
 
 1. repository/tooling;
 2. Supabase local;
