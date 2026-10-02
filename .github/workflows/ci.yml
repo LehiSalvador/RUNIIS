@@ -86,9 +86,18 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # No secrets: the build must not need any (pages that read the database at prerender time degrade
-      # to a logged DEPENDENCY_UNAVAILABLE instead of failing the build).
+      # `next build` prerenders pages that parse the server environment, so it needs well-formed values.
+      # They are inert placeholders (no GitHub secret, nothing deployed from this build); pages that
+      # read the database at prerender time degrade to a logged DEPENDENCY_UNAVAILABLE and the build passes.
       - run: pnpm build
+        env:
+          APP_ENV: local
+          APP_BASE_URL: http://127.0.0.1:3100
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54621
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-build-placeholder-publishable
+          SUPABASE_SECRET_KEY: ci-build-placeholder-secret
+          PASS_CREDENTIAL_ENCRYPTION_KEY_V1: ci-build-placeholder-pass-credential-key-0000
+          INTERNAL_CRON_SECRET: ci-build-placeholder-internal-cron-0000000000
 
   database:
     name: pgTAP (Supabase local)
