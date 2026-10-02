@@ -70,7 +70,7 @@ Not closed. The accidentally exposed PAT line was removed and repository history
 
 ## Rollback and next-phase readiness
 
-No provider rollback needed for this continuation; no new provider mutation completed. Existing Vercel/Supabase changes and offline Git bundle remain recorded in the packet/checkpoint. Fase 2 is not ready and was not started.
+GitHub ruleset `24351949` is the only provider mutation in this continuation. It is active and verified; no rollback performed. If it must be removed, delete that ruleset through GitHub after owner direction. Existing Vercel/Supabase changes and offline Git bundle remain recorded in the packet/checkpoint. Fase 2 is not ready and was not started.
 
 ## Owner human gate
 
