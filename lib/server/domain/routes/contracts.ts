@@ -151,9 +151,15 @@ export const createManualRevisionBodySchema = z.strictObject({
 // The GPX file is base64-encoded so it fits the JSON envelope (defineRoute only accepts
 // application/json); the byte cap (SEC-100) is enforced on the decoded bytes in gpx-parser.ts, not on
 // this string's length (base64 inflates size ~33%). See T32 decisions in the handoff.
+// AUD-030 / P1-AC-13: the string cap is the largest base64 text that decodes to GPX_MAX_DECODED_BYTES
+// (4 chars per 3 bytes, padded). gpx-parser.ts owns the decoded-byte limit and exports the same value as
+// GPX_MAX_BASE64_CHARS, but it imports this module, so the figure is derived here to avoid an import
+// cycle; tests/unit/routes/gpx-contract.test.ts asserts both constants stay equal.
+const GPX_MAX_DECODED_BYTES_FOR_CONTRACT = 3_250_000;
+export const IMPORT_GPX_MAX_BASE64_CHARS = Math.ceil(GPX_MAX_DECODED_BYTES_FOR_CONTRACT / 3) * 4;
 export const importGpxBodySchema = z.strictObject({
   source_filename: z.string().trim().min(1).max(200),
-  gpx_base64: z.string().min(1).max(7_000_000),
+  gpx_base64: z.string().min(1).max(IMPORT_GPX_MAX_BASE64_CHARS),
 });
 
 export const updateRevisionBodySchema = z
