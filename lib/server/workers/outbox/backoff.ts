@@ -1,6 +1,6 @@
 // Exponential backoff with full jitter (Master §147-148): shared by the outbox dispatcher and the
 // communication message dispatcher so every retryable effect in T35 backs off the same way. Pure
-// function, no imports, so it is trivially unit-testable and usable from Netlify functions too.
+// function, no imports, so it is trivially unit-testable and usable from any runtime.
 
 export type BackoffOptions = { baseMs?: number; factor?: number; maxMs?: number; jitterRatio?: number };
 

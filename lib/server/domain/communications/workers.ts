@@ -6,9 +6,9 @@ import { runCommunicationDispatch } from "./dispatch";
 import { runCommunicationReconcile, runProviderUsageReconcile } from "./reconcile";
 
 /**
- * `outbox-dispatch` (Netlify scheduled, tightest free-tier-safe cadence): drains the generic outbox
- * (Master §147-148) and then the communication message queue in the same run — Netlify's free tier
- * caps scheduled-function invocations, so one worker does both instead of two separate schedules.
+ * `outbox-dispatch` (pg_cron + pg_net scheduled, tightest cadence): drains the generic outbox
+ * (Master §147-148) and then the communication message queue in the same run, so a single one-minute
+ * schedule drives both instead of two separate schedules.
  */
 export const outboxDispatchWorker: WorkerHandler = async () => {
   const system = createSystemClient();
@@ -27,8 +27,8 @@ export const outboxDispatchWorker: WorkerHandler = async () => {
   };
 };
 
-/** `communication-reconcile` (Netlify scheduled, 15 min): Master §141/§150 schedule + lifecycle sweep. */
+/** `communication-reconcile` (pg_cron + pg_net scheduled, 15 min): Master §141/§150 schedule + lifecycle sweep. */
 export const communicationReconcileWorker: WorkerHandler = () => runCommunicationReconcile(createSystemClient());
 
-/** `provider-usage-reconcile` (Netlify scheduled, daily): refreshes daily usage snapshots. */
+/** `provider-usage-reconcile` (pg_cron + pg_net scheduled, daily): refreshes daily usage snapshots. */
 export const providerUsageReconcileWorker: WorkerHandler = () => runProviderUsageReconcile(createSystemClient());

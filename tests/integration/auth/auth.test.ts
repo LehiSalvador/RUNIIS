@@ -8,8 +8,8 @@ import { APP_URL, cleanup, createCookieJar, createTestStaff, createTestUser, fet
 const createdUsers: string[] = [];
 afterAll(async () => cleanup(createdUsers));
 
-// getClientIp() intentionally falls back to a fixed "local-dev" subject when there is no Netlify
-// header (client-ip.ts), so every local client (this suite included, across repeated runs) shares
+// getClientIp() intentionally falls back to a fixed "local-dev" subject when there is no trusted
+// platform client-IP header (client-ip.ts), so every local client (this suite included, across repeated runs) shares
 // the same auth.otp.ip/auth.verify.ip buckets (stored as a sha256 hash of the subject, so it can't
 // be matched by the literal string here). This suite makes ~15 real OTP requests per run, which
 // exhausts the 20/hour policy on a second run within the same window; clearing these two
