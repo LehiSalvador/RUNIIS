@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Archivo_Narrow, Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/use-toast";
+import { NON_PRODUCTION_ROBOTS, isIndexableEnvironment } from "@/app/(public)/_lib/seo";
 
 const archivoNarrow = Archivo_Narrow({
   subsets: ["latin"],
@@ -28,6 +29,8 @@ export const metadata: Metadata = {
   },
   description: "RUNIIS: descubre carreras, inscríbete y consulta tu ranking verificado.",
   applicationName: "RUNIIS",
+  // AUD-015: non-production environments are never indexable (production metadata is unchanged).
+  ...(isIndexableEnvironment() ? {} : { robots: NON_PRODUCTION_ROBOTS }),
   openGraph: { siteName: "RUNIIS", locale: "es_MX", type: "website" },
 };
 

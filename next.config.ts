@@ -13,6 +13,11 @@ const securityHeaders = [
   { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
 ];
 
+// AUD-015: staging.runiismty.com and Vercel previews are public URLs; anything that is not production
+// is served with a blanket noindex (also covers non-HTML responses). Unset APP_ENV fails closed.
+const noindexHeaders =
+  process.env.APP_ENV === "production" ? [] : [{ key: "X-Robots-Tag", value: "noindex, nofollow" }];
+
 const nextConfig: NextConfig = {
   poweredByHeader: false,
   // Local QA (Playwright, shared dev server) browses http://127.0.0.1:3100; without this Next 16
@@ -33,12 +38,12 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/:path*",
-        headers: [...securityHeaders, { key: "Permissions-Policy", value: "camera=()" }],
+        headers: [...securityHeaders, ...noindexHeaders, { key: "Permissions-Policy", value: "camera=()" }],
       },
       // Later entries override earlier ones for the same key: only the scanner may use the camera.
       {
         source: "/scanner/:path*",
-        headers: [...securityHeaders, { key: "Permissions-Policy", value: "camera=(self)" }],
+        headers: [...securityHeaders, ...noindexHeaders, { key: "Permissions-Policy", value: "camera=(self)" }],
       },
       {
         source: "/design-system/:path*",
