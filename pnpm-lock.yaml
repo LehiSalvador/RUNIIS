@@ -90,12 +90,6 @@ importers:
       '@axe-core/playwright':
         specifier: ^4.13.0
         version: 4.13.0(playwright-core@1.63.0)
-      '@netlify/functions':
-        specifier: ^6.0.0
-        version: 6.0.0
-      '@netlify/plugin-nextjs':
-        specifier: 5.16.0
-        version: 5.16.0
       '@playwright/test':
         specifier: ^1.63.0
         version: 1.63.0
@@ -684,18 +678,6 @@ packages:
     peerDependencies:
       '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
       '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
-
-  '@netlify/functions@6.0.0':
-    resolution: {integrity: sha512-Pee+FoFnAtdejTkl62a7mZxj6Wx4eqVNuYyDc5T4XPJN9GaAWaUf4cZQFlf2m4Fqq0HoghjtcPKo+BZviVPPKA==}
-    engines: {node: '>=22.12.0'}
-
-  '@netlify/plugin-nextjs@5.16.0':
-    resolution: {integrity: sha512-ys9G34vifslRRy1VwbOMVNFSKU/vuWdNGcYqvAsCAB8VlDFnZDUBM1WUDjDjXOnNXb8kLXA3hX5LgISEONAhAA==}
-    engines: {node: '>=18.0.0'}
-
-  '@netlify/types@3.0.0':
-    resolution: {integrity: sha512-zRCidsQgI4CZWrZB/kmwdPf0QbSNljakfNSLizFvrsSA3UcUrTWSBNMVKmZnob92/8ESeUN0ewXLOlffJU+ATQ==}
-    engines: {node: '>=22.12.0'}
 
   '@next/env@16.3.6':
     resolution: {integrity: sha512-x9Vblze1EbtltQYnNH38xCPWU3TVfBd1eXqA3+w9+BTpedkkdNpAaltXlGQ/nsc1+E0mVTNrtcbX3GoO09zeLQ==}
@@ -4127,14 +4109,6 @@ snapshots:
       '@emnapi/runtime': 1.10.0
       '@tybys/wasm-util': 0.10.4
     optional: true
-
-  '@netlify/functions@6.0.0':
-    dependencies:
-      '@netlify/types': 3.0.0
-
-  '@netlify/plugin-nextjs@5.16.0': {}
-
-  '@netlify/types@3.0.0': {}
 
   '@next/env@16.3.6': {}
 
