@@ -1,4 +1,5 @@
 import { createServerClient } from "@supabase/ssr";
+import { isAuthRetryableFetchError } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { getServerEnv, isSecureAppBaseUrl } from "@/lib/server/env";
 
@@ -54,10 +55,34 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // Verifies (and, if expired, refreshes) the session; never used for an authorization decision here.
-  await supabase.auth.getClaims();
+  // Verifies (and, if expired, refreshes) the session. Never an authorization decision, with one
+  // exception that is only a courtesy redirect (below).
+  const { data, error } = await supabase.auth.getClaims();
+
+  // AUD-033: /cuenta/* pages stream under loading.tsx, so a redirect() thrown by their own guard
+  // arrives after the 200 status line (meta refresh, not a 3xx). A visitor with no session is sent to
+  // /entrar here, before rendering, so the response is a real redirect. The page guards stay in place
+  // and still decide everything for signed-in visitors; a transient auth-backend failure falls through
+  // to them instead of bouncing a possibly signed-in user.
+  if (isAccountPath(pathname) && !data?.claims?.sub && !(error && isAuthRetryableFetchError(error))) {
+    const redirect = applySecurityHeaders(NextResponse.redirect(new URL(accountSignInPath(pathname), request.nextUrl)));
+    for (const cookie of response.cookies.getAll()) redirect.cookies.set(cookie);
+    redirect.headers.set("Cache-Control", "private, no-store");
+    return redirect;
+  }
 
   return response;
+}
+
+/** `/cuenta` and everything beneath it (the account area); exact, case-sensitive like the router. */
+export function isAccountPath(pathname: string): boolean {
+  return pathname === "/cuenta" || pathname.startsWith("/cuenta/");
+}
+
+/** Same return-to semantics as the page guard (app/cuenta/_lib/session.ts): the page's own path. */
+export function accountSignInPath(pathname: string): string {
+  const path = pathname.length > 1 && pathname.endsWith("/") ? pathname.slice(0, -1) : pathname;
+  return `/entrar?next=${encodeURIComponent(path)}`;
 }
 
 // SEC-060: the public surfaces (Home, /eventos, Event pages, /runiis, /contacto, /legal) are
