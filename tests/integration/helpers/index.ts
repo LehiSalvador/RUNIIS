@@ -111,6 +111,15 @@ export async function sessionClientFor(email: string): Promise<{ authUserId: str
   return { authUserId: data.user.id, client };
 }
 
+/**
+ * OD-P2-01 anti-hoarding: an EXTERNAL_WHATSAPP request from an account younger than 24 h (server time, auth.users.created_at) needs an ALTCHA
+ * challenge. Fixtures that are not about that rule stand for ESTABLISHED accounts: this backdates the account like a user who signed up days ago.
+ * Pass `freshAccount: true` to createTestUser (or skip this call after httpSignIn) to keep the real "created just now" age.
+ */
+export function ageAccount(authUserId: string, hours = 72): void {
+  sql(`update auth.users set created_at = now() - interval '${Math.trunc(hours)} hours' where id = '${authUserId}'`);
+}
+
 export type TestUser = {
   authUserId: string;
   email: string;
@@ -134,11 +143,14 @@ export async function createTestUser(
     accountState?: "ACTIVE" | "IDENTITY_LOCKED" | "BANNED" | "DEACTIVATED";
     /** OWN-05: record account-level acceptance of the CURRENT published TERMS/PRIVACY (default true), like onboarding would. */
     accountLegalAccepted?: boolean;
+    /** OD-P2-01: keep the real "account created just now" age (default false: the account is backdated 3 days, see ageAccount). */
+    freshAccount?: boolean;
   } = {},
 ): Promise<TestUser> {
   const label = options.label ?? "user";
   const email = `t20-${label}-${randomUUID()}@example.test`;
   const { authUserId, client } = await sessionClientFor(email);
+  if (!options.freshAccount) ageAccount(authUserId);
 
   let runnerProfileId: string | null = null;
   let publicProfileId: string | null = null;
@@ -213,7 +225,11 @@ export async function fetchOtpCode(email: string, timeoutMs = 10_000): Promise<s
  * the shared dev server, leaving `jar` holding real HttpOnly session cookies. Returns the
  * auth_user_id (looked up by email) so callers can register it with `cleanup`.
  */
-export async function httpSignIn(jar: ReturnType<typeof createCookieJar>, email: string): Promise<string> {
+export async function httpSignIn(
+  jar: ReturnType<typeof createCookieJar>,
+  email: string,
+  options: { freshAccount?: boolean } = {},
+): Promise<string> {
   const otpResponse = await jar.fetch("/api/v1/auth/otp", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -231,6 +247,8 @@ export async function httpSignIn(jar: ReturnType<typeof createCookieJar>, email:
 
   const authUserId = queryValue(`select id::text from auth.users where email = '${email}'`);
   if (!authUserId) throw new Error(`no auth.users row found for ${email} after verify`);
+  // OD-P2-01: fixtures stand for established accounts unless a test is about the new-account rule (see ageAccount).
+  if (!options.freshAccount) ageAccount(authUserId);
   return authUserId;
 }
 

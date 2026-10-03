@@ -105,3 +105,41 @@ describe("verifyReminderCaptcha (F1/SEC-082)", () => {
     expect(rpcMock).not.toHaveBeenCalled();
   });
 });
+
+// P3-D (OD-P2-01): the mechanism was generalised for a second purpose; the reminder must behave exactly as before.
+describe("purpose separation (reminder vs registration request)", () => {
+  const REGISTRATION_INFO = "runiis:altcha:registration-request:v1";
+
+  async function payloadFor(info: string, number = 7): Promise<string> {
+    const key = Buffer.from(hkdfSync("sha256", Buffer.from(INTERNAL_CRON_SECRET, "utf8"), Buffer.alloc(0), Buffer.from(info, "utf8"), 32)).toString("hex");
+    const challenge = await createChallenge({ hmacKey: key, number, expires: new Date(Date.now() + 60_000) });
+    return Buffer.from(
+      JSON.stringify({ algorithm: challenge.algorithm, challenge: challenge.challenge, number, salt: challenge.salt, signature: challenge.signature }),
+    ).toString("base64");
+  }
+
+  it("the reminder keeps its F1 HKDF label: a payload for the reminder label still verifies", async () => {
+    await expect(verifyReminderCaptcha(await payloadFor(HKDF_INFO))).resolves.toBe(true);
+  });
+
+  it("a challenge solved for the registration purpose does NOT verify as a reminder, and vice versa", async () => {
+    const { verifyAltchaPayload } = await import("@/lib/server/domain/communications/captcha");
+    await expect(verifyReminderCaptcha(await payloadFor(REGISTRATION_INFO, 21))).resolves.toBe(false);
+    await expect(verifyAltchaPayload("registration_request", await payloadFor(HKDF_INFO, 22))).resolves.toBe(false);
+    await expect(verifyAltchaPayload("registration_request", await payloadFor(REGISTRATION_INFO, 23))).resolves.toBe(true);
+  });
+
+  it("the issued registration challenge verifies only for its own purpose", async () => {
+    const { createAltchaChallenge, verifyAltchaPayload } = await import("@/lib/server/domain/communications/captcha");
+    const { createHash } = await import("node:crypto");
+    const challenge = await createAltchaChallenge("registration_request");
+    expect(challenge.challenge).toMatch(/^[0-9a-f]{64}$/);
+    let number = 0;
+    while (createHash("sha256").update(challenge.salt + number).digest("hex") !== challenge.challenge) number += 1;
+    const payload = Buffer.from(
+      JSON.stringify({ algorithm: challenge.algorithm, challenge: challenge.challenge, number, salt: challenge.salt, signature: challenge.signature }),
+    ).toString("base64");
+    await expect(verifyReminderCaptcha(payload)).resolves.toBe(false);
+    await expect(verifyAltchaPayload("registration_request", payload)).resolves.toBe(true);
+  });
+});
