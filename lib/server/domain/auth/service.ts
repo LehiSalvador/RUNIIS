@@ -5,6 +5,7 @@ import { AppError } from "../../http/errors";
 import { logEvent } from "../../log";
 import { callRpc } from "../../rpc";
 import { createAnonClient, createSessionClient, createSystemClient } from "../../supabase/clients";
+import { accountLegalStatusResponseSchema } from "@/lib/shared/legal";
 import {
   myProfileSchema,
   onboardingSchema,
@@ -50,6 +51,7 @@ export async function completeOnboarding(
       p_emergency_contact_phone_e164: fields.emergency_contact_phone_e164,
       p_emergency_contact_relationship: fields.emergency_contact_relationship,
       p_idempotency_key: idempotencyKey,
+      p_legal_document_version_ids: fields.legal_document_version_ids ?? null,
     },
     myProfileSchema,
   );
@@ -63,6 +65,21 @@ export async function getMyProfile(supabase: SupabaseClient) {
 
 export async function updateMyProfile(supabase: SupabaseClient, changes: z.output<typeof profilePatchSchema>) {
   return callRpc(supabase, "update_my_profile", { p_changes: changes }, myProfileSchema);
+}
+
+// ---- Account-level legal acceptance (OWN-05, Master §123-124) ----
+
+/** TERMS_OF_SERVICE + PRIVACY_NOTICE: current published versions and whether this account accepted them. */
+export async function getMyLegalStatus(supabase: SupabaseClient) {
+  return callRpc(supabase, "get_my_legal_status", {}, accountLegalStatusResponseSchema);
+}
+
+/** Re-acceptance (or first acceptance). Every id must be a CURRENT version; naturally idempotent. */
+export async function acceptAccountLegalDocuments(supabase: SupabaseClient, versionIds: readonly string[]) {
+  await consumeActorRateLimit(supabase, "legal.account.accept");
+  const status = await callRpc(supabase, "accept_account_legal_documents", { p_legal_document_version_ids: versionIds }, accountLegalStatusResponseSchema);
+  logEvent("info", "account_legal_accepted", { needs_acceptance: status.needs_acceptance });
+  return status;
 }
 
 // ---- OTP sign-in (Master §17; SEC-041/043; F3 targeted-lockout mitigation) ----

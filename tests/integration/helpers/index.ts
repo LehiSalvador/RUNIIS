@@ -117,6 +117,8 @@ export async function createTestUser(
     dob?: string;
     sexCode?: "F" | "M" | "X";
     accountState?: "ACTIVE" | "IDENTITY_LOCKED" | "BANNED" | "DEACTIVATED";
+    /** OWN-05: record account-level acceptance of the CURRENT published TERMS/PRIVACY (default true), like onboarding would. */
+    accountLegalAccepted?: boolean;
   } = {},
 ): Promise<TestUser> {
   const label = options.label ?? "user";
@@ -140,6 +142,14 @@ export async function createTestUser(
       insert into app.community_profile (runner_profile_id, public_profile_id, competition_status, is_visible, is_searchable)
       values ('${runnerProfileId}', '${publicProfileId}', 'ELIGIBLE', true, true);
     `);
+    if (options.accountLegalAccepted ?? true) {
+      // Same rows complete_onboarding writes (no edition/request/participant); a no-op when nothing is published.
+      sql(`
+        insert into app.legal_acceptance (runner_profile_id, legal_document_version_id, acceptance_context)
+        select '${runnerProfileId}', c.legal_document_version_id, '{"via": "test-fixture"}'::jsonb
+        from private.account_legal_current_versions() c;
+      `);
+    }
   }
 
   return { authUserId, email, runnerProfileId, publicProfileId, client };

@@ -54,6 +54,12 @@ export const onboardingSchema = z.strictObject({
   emergency_contact_name: cleanText(2, 120),
   emergency_contact_phone_e164: phoneE164,
   emergency_contact_relationship: cleanText(1, 60),
+  /**
+   * OWN-05: the TERMS_OF_SERVICE / PRIVACY_NOTICE version ids the user was shown and accepted. When present
+   * they must be exactly the current published versions (LEGAL_ACCEPTANCE_REQUIRED otherwise); when absent the
+   * server records the current ones (legacy behaviour, Master §16 step 9b). The UI should always send it.
+   */
+  legal_document_version_ids: z.array(id).max(10).optional(),
 });
 
 export const profilePatchSchema = z

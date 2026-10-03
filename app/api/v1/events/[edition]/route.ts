@@ -14,7 +14,9 @@ export const GET = defineRoute({ auth: "public", input: { params: editionSlugPar
   const result = await getEditionPage(input.params.edition);
   if (!result) throw new AppError("NOT_FOUND");
   if (result.redirect) {
-    return Response.redirect(new URL(`/api/v1/events/${result.slug}`, request.nextUrl), 308);
+    // Not Response.redirect(): its headers are immutable and defineRoute adds x-request-id (it would answer 500).
+    const location = new URL(`/api/v1/events/${result.slug}`, request.nextUrl).toString();
+    return new Response(null, { status: 308, headers: { Location: location } });
   }
   const page = result.edition;
   return {

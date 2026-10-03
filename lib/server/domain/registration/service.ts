@@ -2,6 +2,11 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { CreateRegistrationRequestBody } from "@/lib/shared/registration";
+import {
+  registrationContextRedirectSchema,
+  registrationContextSchema,
+  type RegistrationContext,
+} from "@/lib/shared/registration-context";
 import { buildWhatsAppUrl } from "@/lib/shared/whatsapp";
 import { decodeCursor, encodeCursor } from "../../http/pagination";
 import { logEvent } from "../../log";
@@ -271,4 +276,35 @@ export async function acceptEditionDocuments(
   );
   logEvent("info", "edition_documents_accepted", { edition_id: editionId });
   return result;
+}
+
+// ---- Registration context read model (P2-B, Master §34-42, §61-76, §124) ----
+
+const registrationContextResultSchema = z.union([registrationContextSchema, registrationContextRedirectSchema]).nullable();
+
+/**
+ * Server-authoritative context for /inscripcion/[slug]: edition state, availability, price, forms, event
+ * documents, candidate participants with per-modality verdicts and the buyer's existing request/registrations.
+ * NULL = unknown or unpublished slug (caller: 404). `{redirect: true, slug}` = historical slug (caller: 308).
+ * Reads fresh (never cache): availability and holds change by the second (Master §60).
+ */
+export async function getRegistrationContext(
+  supabase: SupabaseClient,
+  slug: string,
+): Promise<{ redirect: true; slug: string } | { redirect: false; context: RegistrationContext } | null> {
+  await consumeRateLimit(supabase, "registration.context");
+  const result = await callRpc(supabase, "get_registration_context", { p_slug: slug }, registrationContextResultSchema);
+  if (result === null) return null;
+  if (result.redirect) return { redirect: true, slug: result.slug };
+  const { existing, ...rest } = result;
+  return {
+    redirect: false,
+    context: {
+      ...rest,
+      existing: {
+        pending_request: existing.pending_request ? withWhatsAppUrl(existing.pending_request) : null,
+        registrations: existing.registrations,
+      },
+    },
+  };
 }
