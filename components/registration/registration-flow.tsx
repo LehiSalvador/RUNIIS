@@ -12,7 +12,7 @@ import type { RegistrationContext } from "@/lib/shared/registration-context";
 import { focusControl, participantScope } from "./bits";
 import { fieldControlId } from "./dynamic-field";
 import { blockedState } from "./logic/availability";
-import { clearDraft, loadDraft, saveDraft } from "./logic/draft-storage";
+import { clearDraft, clearDraftsOfOtherAccounts, loadDraft, saveDraft } from "./logic/draft-storage";
 import { bannerToShow, describeRefreshFailure, interpretCreateFailure, type BannerTone, type FailureAction } from "./logic/errors";
 import {
   STEP_IDS,
@@ -96,6 +96,9 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
   const [retryAt, setRetryAt] = React.useState<string | null>(null);
   const [outcome, setOutcome] = React.useState<OutcomeRequest | null>(null);
   const [hydrated, setHydrated] = React.useState(false);
+  // Opaque id of the signed-in account (runner_profile_id). A draft is only ever read or written under it (H2P2-03);
+  // until it is known, or if it cannot be read, nothing is persisted.
+  const [draftSubject, setDraftSubject] = React.useState<string | null>(null);
 
   const headingRef = React.useRef<HTMLHeadingElement>(null);
   const submittingRef = React.useRef(false);
@@ -103,19 +106,29 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
   const focusAfterRender = React.useRef<string | "heading" | null>(null);
   const editionId = ctx.edition.edition_id;
 
-  // Restore what this tab already typed (session expired / reload), then keep it saved. Storage may be absent.
+  // Restore what this tab already typed (session expired / reload) FOR THIS ACCOUNT, then keep it saved. The account is
+  // read from the API first; drafts of any other account in this tab are purged. Storage may be absent.
   React.useEffect(() => {
-    // After hydration, from a timer callback: sessionStorage is an external system the server render cannot see.
-    const timer = window.setTimeout(() => {
-      const saved = loadDraft(initialContext.edition.edition_id);
-      if (saved && saved.selected.length > 0) setDraft(reconcileDraft(initialContext, saved));
+    let cancelled = false;
+    void (async () => {
+      const me = await apiFetch<{ runner_profile_id: string }>("/api/v1/me");
+      if (cancelled) return;
+      const subject = me.ok && typeof me.data.runner_profile_id === "string" ? me.data.runner_profile_id : null;
+      if (subject) {
+        clearDraftsOfOtherAccounts(subject);
+        const saved = loadDraft(subject, initialContext.edition.edition_id);
+        if (saved && saved.selected.length > 0) setDraft(reconcileDraft(initialContext, saved));
+      }
+      setDraftSubject(subject);
       setHydrated(true);
-    }, 0);
-    return () => window.clearTimeout(timer);
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [initialContext]);
   React.useEffect(() => {
-    if (hydrated && !outcome) saveDraft(editionId, draft);
-  }, [draft, editionId, hydrated, outcome]);
+    if (hydrated && draftSubject && !outcome) saveDraft(draftSubject, editionId, draft);
+  }, [draft, draftSubject, editionId, hydrated, outcome]);
 
   React.useEffect(() => {
     const target = focusAfterRender.current;
@@ -282,7 +295,7 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
     submittingRef.current = false;
     setSubmitting(false);
     if (result.ok) {
-      clearDraft(editionId);
+      clearDraft(draftSubject, editionId);
       idempotency.current = null;
       setServerErrors(NO_SERVER_ERRORS);
       setOutcome(result.data);

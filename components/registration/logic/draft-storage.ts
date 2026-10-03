@@ -4,12 +4,22 @@ import { emptyParticipantDraft, type Draft, type FieldValue, type ParticipantDra
 // session-expired -> /entrar). It stores only what the person typed or chose. It never stores accepted legal
 // documents: an acceptance is an explicit act each time, never restored on someone's behalf. Every access is
 // guarded: storage can be blocked, full or absent and the flow must work without it.
+//
+// A draft belongs to ONE account (H2P2-03): the key is `<prefix><subject>:<edition>`, where the subject is the opaque
+// runner_profile_id (a random UUID, not PII). Without a subject nothing is read or written, so answers typed by one
+// account can never be restored for the next one in the same tab. Every draft is cleared on sign-out and, when the
+// flow loads for another account, every draft that is not that account's is purged (legacy edition-only keys too).
 
 const PREFIX = "runiis:registration-draft:";
 const VERSION = 1;
 
-function storageKey(editionId: string): string {
-  return `${PREFIX}${editionId}`;
+/** A subject is an opaque, non-empty id without the key separator; anything else means "no account known". */
+function usableSubject(subject: string | null | undefined): subject is string {
+  return typeof subject === "string" && subject.length > 0 && subject.length <= 64 && !subject.includes(":");
+}
+
+function storageKey(subject: string, editionId: string): string {
+  return `${PREFIX}${subject}:${editionId}`;
 }
 
 function sessionStore(): Storage | null {
@@ -63,26 +73,56 @@ export function parseDraft(raw: string | null): Draft | null {
   }
 }
 
-export function saveDraft(editionId: string, draft: Draft): void {
+export function saveDraft(subject: string | null | undefined, editionId: string, draft: Draft): void {
+  if (!usableSubject(subject)) return;
   try {
-    sessionStore()?.setItem(storageKey(editionId), serializeDraft(draft));
+    sessionStore()?.setItem(storageKey(subject, editionId), serializeDraft(draft));
   } catch {
     // Storage unavailable: the flow keeps working from memory.
   }
 }
 
-export function loadDraft(editionId: string): Draft | null {
+export function loadDraft(subject: string | null | undefined, editionId: string): Draft | null {
+  if (!usableSubject(subject)) return null;
   try {
-    return parseDraft(sessionStore()?.getItem(storageKey(editionId)) ?? null);
+    return parseDraft(sessionStore()?.getItem(storageKey(subject, editionId)) ?? null);
   } catch {
     return null;
   }
 }
 
-export function clearDraft(editionId: string): void {
+export function clearDraft(subject: string | null | undefined, editionId: string): void {
+  if (!usableSubject(subject)) return;
   try {
-    sessionStore()?.removeItem(storageKey(editionId));
+    sessionStore()?.removeItem(storageKey(subject, editionId));
   } catch {
     // Nothing to clear.
   }
+}
+
+function removeDraftKeys(keep: (key: string) => boolean): void {
+  try {
+    const store = sessionStore();
+    if (!store) return;
+    const doomed: string[] = [];
+    for (let index = 0; index < store.length; index++) {
+      const key = store.key(index);
+      if (key !== null && key.startsWith(PREFIX) && !keep(key)) doomed.push(key);
+    }
+    for (const key of doomed) store.removeItem(key);
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+/** Sign-out: no registration draft of any account (or of the legacy edition-only form) outlives the session. */
+export function clearAllDrafts(): void {
+  removeDraftKeys(() => false);
+}
+
+/** The signed-in account changed (or is being confirmed): drop every draft that is not this account's. */
+export function clearDraftsOfOtherAccounts(subject: string | null | undefined): void {
+  if (!usableSubject(subject)) return;
+  const own = `${PREFIX}${subject}:`;
+  removeDraftKeys((key) => key.startsWith(own));
 }
