@@ -9,7 +9,7 @@ No secret values appear in this report. Variables are named, never valued.
 | status | `TECHNICAL_PASS_WITH_OWNER_BLOCKER` (not `PHASE_APPROVED`: only the owner approves) |
 | report_date | 2026-10-02 (America/Monterrey) / 2026-10-03 UTC |
 | baseline_in | `staging@a9ef303` (audited) + untracked T41 WIP |
-| baseline_out | local `staging@fb24ec8`; `origin/staging@466d980`; `origin/wip/t41-closure-partial@b34aa74`; `main`/`origin/main@bdd1198` (placeholder, untouched) |
+| baseline_out | local `staging@fb24ec8` (integrated code/docs; report commits follow); `origin/staging@466d980`; `origin/wip/t41-closure-partial@b34aa74`; `main`/`origin/main@bdd1198` (placeholder, untouched) |
 | review URL | https://staging.runiismty.com (sign in to Vercel with the team account; see Owner Human Gate) |
 
 ## 1. Observable outcome
@@ -36,7 +36,7 @@ No secret values appear in this report. Variables are named, never valued.
 | WU-P1-E provider operations | orchestrator | REMOTE_INTEGRATED | `.local-state/phase-1/provider-ops.log` (secret-free) |
 | WU-P1-H1 QA gate | salvaops-qa | PASS | Tier 2 on `79b77b9`; all assigned acceptance IDs PASS |
 | WU-P1-H2 AppSec gate | salvaops-appsec | FAIL only on H2-01 (owner action) | platform verdicts AC-09/11/12/18 PASS_WITH_FINDINGS |
-| WU-P1-H3 Integration & Evidence | salvaops-integration-evidence | see section 9 | reconciliation table |
+| WU-P1-H3 Integration & Evidence | salvaops-integration-evidence | READY | `.salvaops-agent-evidence/WU-P1-H3-integration-evidence/reconciliation.md` (rev 2) |
 | WU-P1-G cutover | orchestrator | DEFERRED | see section 7 |
 
 Agents used: salvaops-backend ×2, salvaops-database ×3, salvaops-web-architect, salvaops-qa, salvaops-appsec, salvaops-integration-evidence. Maximum two concurrent model actors.
@@ -68,7 +68,7 @@ Remote probes (orchestrator, staging, evidence `.salvaops-agent-evidence/P1-GATE
 | Google OAuth | app → staging Supabase authorize → Google with the staging client ID; no `redirect_uri_mismatch` |
 | Client IP / rate limit | 11th wrong code → 429; forged XFF/X-Real-IP/x-vercel-forwarded-for → still 429; same email from Supabase egress → 400 (separate bucket) |
 | GPX body limit | 4.33 MB and 4.45 MB reach the app; 4.6 MB and 7.5 MB → platform 413 `FUNCTION_PAYLOAD_TOO_LARGE` |
-| Workers | pg_cron → pg_net → Vercel: all 4 HTTP + 3 DB workers `SUCCEEDED` in `infra.worker_run`, 0 stale RUNNING; wrong/absent Bearer → 401, no run |
+| Workers | pg_cron → pg_net → Vercel: all 4 HTTP workers plus the 5-minute DB workers (`close-registration-windows`, `expire-registration-requests`) `SUCCEEDED` in `infra.worker_run` (daily `archive-guests` not yet due in the observed window), 0 stale RUNNING; wrong/absent Bearer → 401, no run |
 | Exposure | without credentials staging and worker routes return Vercel SSO 302; PostgREST rejects `net`, `vault`, `app`, `private`, `cron` (406); GraphQL disabled |
 | Email safety | branch `staging` `allowlist`; other previews `capture`; Production has no mode → refuses to send |
 | Secrets | gitleaks history/tree clean; value scan of tracked tree, docs and evidence: 0 hits |
