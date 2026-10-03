@@ -2,13 +2,16 @@ import { birthDateForAge, createReadyUser, signInViaApi, uniqueEmail } from "../
 import { settleNetwork } from "../support/settle";
 import {
   acceptEventDocuments,
+  acceptOnEditionScreen,
   befriend,
   chooseParticipants,
   continueButton,
+  copyAcceptanceLink,
   expect,
   fillDetails,
   guestPayload,
   newBuyer,
+  openEditionDocuments,
   openRegistration,
   registerThroughUi,
   requestData,
@@ -60,14 +63,23 @@ test("Friend (FREE): the adult Friend accepts their own documents; the buyer can
   await expect(page.getByTestId("step-error")).toContainText("deben aceptar sus documentos desde su cuenta");
   await expect(page.getByRole("heading", { name: "Documentos legales" })).toBeVisible();
 
-  // The Friend accepts in their own account through the pending-actions contract.
-  const actions = await pendingActionsFor(friend.page, edition.edition_id);
-  const own = actions.find((action) => action.subject.kind === "SELF" && action.edition.edition_id === edition.edition_id);
+  // The buyer copies the deep link; the Friend opens it in their own account and accepts on the edition documents screen.
+  const link = await copyAcceptanceLink(page, friendCard);
+  expect(new URL(link).pathname).toBe(`/cuenta/documentos/evento/${edition.slug}`);
+  const own = (await pendingActionsFor(friend.page, edition.edition_id)).find((action) => action.subject.kind === "SELF");
   expect(own, "the Friend is told what to accept").toBeTruthy();
-  const accepted = await friend.page.request.post("/api/v1/me/pending-actions/accept-documents", {
-    data: { edition_id: edition.edition_id, legal_document_version_ids: own!.documents.map((document) => document.legal_document_version_id) },
-  });
-  expect(accepted.status(), "Friend accepts their own documents").toBeLessThan(300);
+  await openEditionDocuments(friend.page, link);
+  const screen = friend.page.getByTestId("edition-documents");
+  await expect(screen.getByRole("heading", { name: edition.name })).toBeVisible();
+  const cards = friend.page.getByTestId("edition-docs-card");
+  await expect(cards).toHaveCount(1);
+  await expect(cards.first()).toContainText("Tus documentos");
+  await expect(cards.first().getByRole("checkbox")).toHaveCount(own!.documents.length);
+  await a11y(friend.page);
+  await evidence("friend-free-deep-link");
+  await acceptOnEditionScreen(cards.first());
+  await expect(friend.page.getByTestId("edition-docs-done")).toContainText("Aceptaste tus documentos");
+  await expect(friend.page.getByText(/Ya aceptó, actualizar/)).toBeVisible();
   expect(await pendingActionsFor(friend.page, edition.edition_id)).toEqual([]);
 
   // The buyer refreshes: the Friend now shows as accepted and the request can be sent.
@@ -91,6 +103,78 @@ test("Friend (FREE): the adult Friend accepts their own documents; the buyer can
   await settleNetwork(friend.page);
   await expect(friend.page.getByTestId("pass-row").first()).toHaveAttribute("data-pass-state", "VALID");
   await friend.context.close();
+});
+
+test("Guardian of a minor Guest owned by another account (FREE): the buyer copies the link, the guardian accepts on the screen, the owner's submit confirms", async ({ page, browser, baseURL, world, a11y, evidence }) => {
+  const edition = await world.edition("free");
+  const owner = await createReadyUser(page, "guestguardianowner");
+  const guardian = await newBuyer(browser, baseURL, "guestguardian");
+  await befriend(page, guardian.page, guardian.user);
+
+  // A minor Guest (16) owned by the buyer whose guardian is the adult Friend: the Friend confirms the link from their own account.
+  const guestName = `Menor Journey ${Math.random().toString(36).slice(2, 6)}`;
+  const created = await page.request.post("/api/v1/me/guests", { data: guestPayload(guestName, birthDateForAge(16)) });
+  expect(created.status(), "create minor Guest").toBe(201);
+  const guestId = ((await created.json()) as { data: { guest_participant_id: string } }).data.guest_participant_id;
+  const linked = await page.request.post("/api/v1/me/guardians", {
+    data: { minor_kind: "GUEST", guest_participant_id: guestId, guardian_public_profile_id: guardian.user.publicProfileId, relationship_type: "PARENT" },
+  });
+  expect(linked.status(), "guardian request for the Guest").toBeLessThan(300);
+  const assignment = ((await linked.json()) as { data: { guardian_assignment_id: string } }).data.guardian_assignment_id;
+  expect((await guardian.page.request.post(`/api/v1/me/guardians/${assignment}/confirm`)).status(), "guardian confirm").toBeLessThan(300);
+
+  await openRegistration(page, edition.slug);
+  await chooseParticipants(page, [new RegExp(guestName)]);
+  await continueButton(page).click();
+  await expect(page.getByRole("heading", { name: "Modalidad y datos" })).toBeVisible();
+  await fillDetails(page, null, { modality: /^5K/, shirt: "S" });
+  await continueButton(page).click();
+  await expect(page.getByRole("heading", { name: "Documentos legales" })).toBeVisible();
+
+  // The owner accepts only their own; the minor's documents belong to the guardian, who is another account.
+  expect(await acceptEventDocuments(page, owner.name)).toBeGreaterThan(0);
+  const guestCard = page.getByTestId("legal-card").filter({ hasText: guestName });
+  await expect(guestCard.getByRole("checkbox")).toHaveCount(0);
+  await expect(guestCard.getByTestId("pending-other")).toContainText("su responsable es otra persona");
+  await continueButton(page).click();
+  await expect(page.getByTestId("step-error")).toContainText("deben aceptar sus documentos desde su cuenta");
+
+  // No request exists yet: the deep link is how the guardian learns what to accept.
+  const deepLink = await copyAcceptanceLink(page, guestCard);
+  expect(new URL(deepLink).pathname).toBe(`/cuenta/documentos/evento/${edition.slug}`);
+  await openEditionDocuments(guardian.page, deepLink);
+  const cards = guardian.page.getByTestId("edition-docs-card");
+  const wardCard = cards.filter({ hasText: guestName });
+  await expect(wardCard).toHaveCount(1);
+  await expect(wardCard).toContainText("Aceptas como su responsable");
+  // The guardian's own adult documents are listed too (they are an adult in this edition), and never anyone else's ward.
+  const ownCard = cards.filter({ hasText: "Tus documentos" });
+  await expect(ownCard).toHaveCount(1);
+  await expect(cards).toHaveCount(2);
+  expect(await wardCard.getByRole("checkbox").count(), "the minor owes one more document than an adult").toBe((await ownCard.getByRole("checkbox").count()) + 1);
+  await expect(wardCard.getByRole("checkbox").first()).toHaveAccessibleName(/Leí y acepto como responsable/);
+  await a11y(guardian.page);
+  await evidence("guardian-guest-deep-link");
+  await acceptOnEditionScreen(wardCard);
+  await expect(guardian.page.getByTestId("edition-docs-done").filter({ hasText: guestName })).toContainText(`Aceptaste los documentos de ${guestName}`);
+
+  // The owner refreshes, the FREE submit confirms and holds both passes.
+  await guestCard.getByRole("button", { name: /Ya aceptó, actualizar/ }).click();
+  await expect(guestCard.getByTestId("pending-other")).toHaveCount(0, { timeout: 20_000 });
+  await continueButton(page).click();
+  await expect(page.getByRole("heading", { name: "Revisa y envía" })).toBeVisible();
+  const request = await requestData(await submitAndWait(page, "FREE"));
+  expect(request.status).toBe("CONFIRMED");
+  expect(request.participants.map((participant) => participant.legal_acceptance_status)).toEqual(["ACCEPTED", "ACCEPTED"]);
+  expect(request.participants.filter((participant) => participant.registration?.participant_pass_id)).toHaveLength(2);
+  await expect(page.getByRole("heading", { name: /Tu inscripción está confirmada/ })).toBeVisible();
+  await a11y();
+
+  // The owner is not the guardian: the same screen never offers the minor's documents to them.
+  await openEditionDocuments(page, deepLink);
+  await expect(page.getByTestId("edition-docs-card").filter({ hasText: guestName })).toHaveCount(0);
+  await expect(page.getByTestId("edition-docs-done")).toHaveCount(0);
+  await guardian.context.close();
 });
 
 test("Friend (WhatsApp): the request is created, staff cannot confirm until the Friend accepts in their account", async ({ page, browser, baseURL, world, a11y, evidence }) => {
@@ -123,6 +207,9 @@ test("Friend (WhatsApp): the request is created, staff cannot confirm until the 
   await action.getByRole("button", { name: "Revisar y aceptar" }).click();
   const dialog = friend.page.getByRole("dialog");
   await expect(dialog).toBeVisible();
+  // The Edition's own rules have a per-Edition document key: the dialog reads them by that key, not by the document type.
+  await expect(dialog.getByText(new RegExp(`reglamento ${edition.slug}`))).toBeVisible();
+  await expect(dialog.getByText("Este documento no está disponible para lectura aquí")).toHaveCount(0);
   await dialog.getByRole("button", { name: "Aceptar documentos" }).click();
   await expect(dialog.getByText("Marca la casilla para confirmar que leíste los documentos.")).toBeVisible();
   await dialog.getByRole("checkbox", { name: "Leí y acepto estos documentos" }).click();

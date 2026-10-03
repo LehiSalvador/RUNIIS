@@ -12,11 +12,10 @@ import { ConfirmDialog } from "@/components/account/confirm-dialog";
 import { apiFetch } from "@/lib/client/api";
 import { LEGAL_DOCUMENT_LABELS } from "@/lib/client/account-format";
 import type { PendingActionView } from "@/lib/client/account-types";
+import { loadActionDocumentTexts, type LegalText } from "@/components/account/logic/pending-action-documents";
 
 // react-markdown only loads when someone opens a document dialog.
 const Markdown = dynamic(() => import("@/components/public/markdown").then((module) => module.Markdown));
-
-type LegalText = { status: "ready"; markdown: string } | { status: "unavailable" };
 
 function subjectLabel(action: PendingActionView): string {
   if (action.subject.kind === "SELF") return "Para ti";
@@ -27,7 +26,7 @@ function subjectLabel(action: PendingActionView): string {
  * Master §124 pending action: this person (or the minor they are responsible for) still has to
  * accept an Edition's current documents. Accepting is the person's own act -- a buyer never sees a
  * checkbox for someone else. The dialog shows each document's current text when the public legal
- * endpoint serves that exact version.
+ * endpoint serves that exact version, read by the document's own key (the Edition's rules have a per-Edition key).
  */
 export function PendingActionCard({ action }: { action: PendingActionView }) {
   const router = useRouter();
@@ -38,22 +37,14 @@ export function PendingActionCard({ action }: { action: PendingActionView }) {
   React.useEffect(() => {
     if (!open) return;
     const controller = new AbortController();
-    for (const document of action.documents) {
-      apiFetch<{ legal_document_version_id: string; content_markdown: string | null }>(
-        `/api/v1/legal/${encodeURIComponent(document.document_type)}`,
-        { signal: controller.signal },
-      )
-        .then((result) => {
-          const text: LegalText =
-            result.ok && result.data.legal_document_version_id === document.legal_document_version_id && result.data.content_markdown
-              ? { status: "ready", markdown: result.data.content_markdown }
-              : { status: "unavailable" };
-          setTexts((current) => ({ ...current, [document.legal_document_version_id]: text }));
-        })
-        .catch(() => undefined);
-    }
+    loadActionDocumentTexts(
+      action,
+      apiFetch,
+      (versionId, text) => setTexts((current) => ({ ...current, [versionId]: text })),
+      controller.signal,
+    ).catch(() => undefined);
     return () => controller.abort();
-  }, [open, action.documents]);
+  }, [open, action]);
 
   async function accept() {
     const body: Record<string, unknown> = {

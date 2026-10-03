@@ -18,8 +18,9 @@ type Params = Promise<{ slug: string }>;
 /**
  * Master §124 / P2-AC-03.c: where an adult Friend (or the guardian of a minor) accepts the event documents of an edition before the
  * buyer submits. Deep link `/cuenta/documentos/evento/{slug}`: no session -> /entrar?next=<this page>, incomplete profile -> /onboarding.
- * Reads only the existing endpoints' domain functions (pending actions scoped to the edition + the registration context for the
- * documents and the minors this person guards) and never caches: acceptance state moves by the second.
+ * Reads only the existing endpoints' domain functions (pending actions scoped to the edition, which since P2-G3 include the minors
+ * this person guards, + the registration context for each document's public text key) and never caches: acceptance state moves by
+ * the second.
  */
 export default async function EditionDocumentsPage({ params }: { params: Params }) {
   const { slug } = await params;
@@ -63,7 +64,6 @@ export default async function EditionDocumentsPage({ params }: { params: Params 
     editionId: ctx.edition.edition_id,
     actions: actions.data.items,
     contextDocuments: ctx.documents,
-    candidates: ctx.candidates,
   });
   const signature = items.map((item) => `${item.key}:${item.documents.map((document) => document.legal_document_version_id).join("+")}`).join("|");
 

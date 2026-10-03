@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
-import type { Browser, BrowserContext, Page } from "@playwright/test";
+import type { Browser, BrowserContext, Locator, Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { createReadyUser, resetAuthIpBuckets, usesAdminOtp, type AccountUser, type PersonInput } from "./account";
 import { scanForSeriousViolations } from "./axe";
@@ -20,7 +20,8 @@ import { adminOtpFor } from "./remote-auth";
  * Admin identity is env-only (QA_ADMIN_EMAIL + the server-key OTP mechanism); nothing secret is written down.
  */
 
-export const EVIDENCE_DIR = ".salvaops-agent-evidence/P2-E-journey-e2e";
+/** Screenshots land here; a Work Unit that reruns the journeys points E2E_EVIDENCE_DIR at its own evidence folder. */
+export const EVIDENCE_DIR = process.env.E2E_EVIDENCE_DIR?.trim() || ".salvaops-agent-evidence/P2-E-journey-e2e";
 export const LOCAL_ADMIN_EMAIL = "admin@runiis.test";
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
 
@@ -347,6 +348,42 @@ export async function acceptEventDocuments(page: Page, who: string | RegExp): Pr
     await box.click();
     await expect(box).toHaveAttribute("aria-checked", "true");
   }
+  return boxes.length;
+}
+
+/**
+ * The buyer presses "Copiar enlace" on a person who has to accept in their own account and gets the deep link
+ * (`/cuenta/documentos/evento/{slug}`). Reads the clipboard when the browser allowed the copy and the visible fallback text otherwise.
+ */
+export async function copyAcceptanceLink(page: Page, scope: Locator): Promise<string> {
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]).catch(() => undefined);
+  await scope.getByRole("button", { name: /Copiar enlace/ }).click();
+  const fallback = scope.getByText(/Copia este enlace:/);
+  await expect(page.getByText("Enlace copiado").or(fallback).first()).toBeVisible();
+  const link = (await fallback.isVisible()) ? ((await fallback.locator("span").textContent()) ?? "") : await page.evaluate(() => navigator.clipboard.readText());
+  expect(link, "the copied acceptance link").toMatch(/\/cuenta\/documentos\/evento\/[a-z0-9-]+$/);
+  return link;
+}
+
+/** Opens the edition documents screen from the deep link the buyer shared (the person is already signed in). */
+export async function openEditionDocuments(page: Page, link: string): Promise<void> {
+  await page.goto(link);
+  await expect(page.getByTestId("edition-documents")).toBeVisible({ timeout: 30_000 });
+  await waitForHydration(page);
+}
+
+/** Ticks every document of one card on the edition documents screen, then accepts; returns how many documents it held. */
+export async function acceptOnEditionScreen(card: Locator): Promise<number> {
+  const boxes = await card.getByRole("checkbox").all();
+  const accept = card.getByRole("button", { name: "Aceptar documentos" });
+  await expect(accept).toBeDisabled();
+  for (const box of boxes) {
+    await expect(box).toHaveAttribute("aria-checked", "false");
+    await box.click();
+    await expect(box).toHaveAttribute("aria-checked", "true");
+  }
+  await expect(accept).toBeEnabled();
+  await accept.click();
   return boxes.length;
 }
 

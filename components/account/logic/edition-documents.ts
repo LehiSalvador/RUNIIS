@@ -1,5 +1,5 @@
 import type { PendingActionView } from "@/lib/client/account-types";
-import type { RegistrationCandidate, RegistrationContext } from "@/lib/shared/registration-context";
+import type { RegistrationContext } from "@/lib/shared/registration-context";
 
 /**
  * Master §124 / P2-AC-03.c: the edition-scoped "accept the event documents" screen. An adult Friend accepts personally; a
@@ -54,22 +54,19 @@ function toDocuments(
 }
 
 /**
- * Everything this person must accept for the edition. Two sources, both existing read endpoints:
- *  - GET /me/pending-actions?edition_id= (their own missing acceptance for an OPEN edition, plus the actions of any pending request
- *    for this edition); other editions' actions are not shown here.
- *  - the registration context: minors the person is the ACTIVE guardian of, whose documents are still missing. The API lists those
- *    only once a request exists, but a FREE edition confirms on submit, so the guardian has to be able to accept earlier.
+ * Everything this person must accept for the edition, from ONE source: GET /me/pending-actions?edition_id=. Since P2-G3 it lists, for
+ * an OPEN edition and before any request exists, the person's own missing acceptance (SELF) and one item per minor they are the
+ * ACTIVE guardian of (MINOR_PROFILE, MINOR_GUEST whoever owns the Guest), plus the actions of any pending request for this edition.
+ * Other editions' actions are not shown here. The registration context only supplies each version's public text key.
  */
 export function buildEditionAcceptanceItems({
   editionId,
   actions,
   contextDocuments,
-  candidates,
 }: {
   editionId: string;
   actions: readonly PendingActionView[];
   contextDocuments: readonly ContextDocument[];
-  candidates: readonly RegistrationCandidate[];
 }): EditionAcceptanceItem[] {
   const items = new Map<string, EditionAcceptanceItem>();
 
@@ -77,27 +74,6 @@ export function buildEditionAcceptanceItems({
     if (action.edition.edition_id !== editionId || action.documents.length === 0) continue;
     const key = subjectKey(action.subject);
     if (!items.has(key)) items.set(key, { key, subject: action.subject, documents: toDocuments(action.documents, contextDocuments) });
-  }
-
-  for (const candidate of candidates) {
-    const { acceptance } = candidate;
-    // Only the guardian's own act: the buyer is the ACTIVE guardian of a minor who still misses documents.
-    if (acceptance.acceptor !== "GUARDIAN" || !acceptance.buyer_can_accept || !candidate.is_minor || acceptance.missing_document_version_ids.length === 0) continue;
-    let subject: EditionAcceptanceSubject;
-    if (candidate.participant_kind === "PROFILE" && candidate.public_profile_id) {
-      subject = { kind: "MINOR_PROFILE", public_profile_id: candidate.public_profile_id, display_name: candidate.display_name };
-    } else if (candidate.participant_kind === "GUEST" && candidate.guest_participant_id) {
-      subject = { kind: "MINOR_GUEST", guest_participant_id: candidate.guest_participant_id, display_name: candidate.display_name };
-    } else {
-      continue;
-    }
-    const key = subjectKey(subject);
-    if (items.has(key)) continue;
-    const documents = acceptance.missing_document_version_ids.flatMap((versionId) => {
-      const listed = contextDocuments.find((document) => document.legal_document_version_id === versionId);
-      return listed ? [{ legal_document_version_id: versionId, document_type: listed.document_type, document_key: listed.document_key, version: listed.version }] : [];
-    });
-    if (documents.length > 0) items.set(key, { key, subject, documents });
   }
 
   // Own acceptance first, then the minors, each group in a stable order.
