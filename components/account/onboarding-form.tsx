@@ -33,6 +33,23 @@ type OnboardingProfile = {
   emergency_contact_relationship: string | null;
 };
 
+/**
+ * The `legal_document_version_ids` of POST /me/onboarding: ALWAYS an array (P2-G5, H2P2-05). It lists every current
+ * version the person was shown; it is `[]` only when no TERMS/PRIVACY version is published (the DB accepts `[]` only then,
+ * and answers LEGAL_ACCEPTANCE_REQUIRED when documents are published). It is never omitted.
+ */
+export function onboardingLegalVersionIds(documents: readonly Pick<AccountLegalDocument, "legal_document_version_id">[]): string[] {
+  return documents.map((document) => document.legal_document_version_id);
+}
+
+/**
+ * The onboarding submit already happened: it succeeded, or it conflicts because the profile is already READY (a double
+ * submit or a stale tab: 409 CONFLICT, details.reason PROFILE_ALREADY_READY). Either way the person continues, with no error.
+ */
+export function onboardingAlreadyCompleted(result: { ok: boolean; code?: string }): boolean {
+  return result.ok || result.code === "CONFLICT";
+}
+
 const AFTER_BIRTH_DATE: ReadonlySet<PersonField> = new Set(["sex_code", "phone_e164", "emergency_contact_name", "emergency_contact_phone_e164", "emergency_contact_relationship"]);
 
 /**
@@ -104,11 +121,12 @@ export function OnboardingForm({ profile, next, legal: legalDocuments }: { profi
       method: "POST",
       body: {
         ...toPersonPayload(values),
-        ...(documents.length > 0 ? { legal_document_version_ids: documents.map((document) => document.legal_document_version_id) } : {}),
+        legal_document_version_ids: onboardingLegalVersionIds(documents),
       },
       idempotencyKey: newIdempotencyKey(),
     });
-    if (result.ok || result.code === "CONFLICT") {
+    if (result.ok || onboardingAlreadyCompleted(result)) {
+      // Done, or 409 PROFILE_ALREADY_READY (double submit / stale tab): continue to the safe `next` target, no error banner.
       window.location.assign(next);
       return;
     }
