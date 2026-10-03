@@ -134,3 +134,18 @@ select cron.alter_job((select jobid from cron.job where jobname = 'http-outbox-d
   next tick uses it. Between the two steps scheduled calls to a protected deployment are redirected (harmless).
 - pg_cron runs jobs as the migration owner (`postgres`); the Vault entries are only readable by that role and by
   `service_role` through `vault.decrypted_secrets`. Do not grant the view to `anon`/`authenticated`.
+
+## Standing assertion: pg_net and Vault stay out of the API (AppSec H2-12)
+
+Supabase's pg_net default leaves `net.http_*` executable and `net.http_request_queue` /
+`net._http_response` readable by `anon`/`authenticated` at the SQL level, and the queue briefly holds
+the worker `Authorization` and `x-vercel-protection-bypass` headers. The objects are owned by
+`supabase_admin`, so no project role (migrations, Management API SQL) can revoke those grants
+(WU-P1-D3 evidence). Accepted as a platform default on the condition that `net`, `vault`, `cron`,
+`private` and `app` are never added to the PostgREST exposed schemas and pg_graphql stays disabled.
+Re-check per environment after any API-settings change or pg_net upgrade:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}\n' "https://<ref>.supabase.co/rest/v1/http_request_queue?limit=1" \
+  -H "apikey: <PUBLISHABLE_KEY>" -H "Accept-Profile: net"   # expect 406 (Invalid schema: net)
+```
