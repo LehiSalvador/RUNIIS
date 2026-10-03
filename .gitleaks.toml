@@ -25,3 +25,14 @@ condition = "AND"
 targetRules = ["generic-api-key"]
 commits = ["17fc6c36c33ac8d335acec663ac36bbbfbba0c03"]
 paths = ['''^\.env\.example$''']
+
+# Known history finding: commit 8daff0b carried a synthetic bypass-secret literal in the harness
+# self-test (tests/e2e/harness/plumbing.spec.ts); it matches no real secret and was replaced by a
+# runtime-built value in the next commit. Narrow on purpose: this exact commit AND this exact file AND
+# the generic rule (condition AND).
+[[allowlists]]
+description = "Synthetic test literal in the E2E harness self-test at commit 8daff0b (no real secret)"
+condition = "AND"
+targetRules = ["generic-api-key"]
+commits = ["8daff0b8557859c1c715838c1b0144e739e8ab72"]
+paths = ['''tests/e2e/harness/plumbing\.spec\.ts$''']

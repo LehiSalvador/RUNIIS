@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { expect, test } from "@playwright/test";
@@ -16,7 +17,10 @@ test.beforeEach(({}, testInfo) => {
 });
 
 const NL = String.fromCharCode(10);
-const SYNTHETIC_SECRET = "synthetic-bypass-secret-0123456789";
+// Built at runtime so no secret-looking literal lives in the tree (gitleaks); unique per run, which also
+// keeps the "never leaked" assertions meaningful.
+const SYNTHETIC_SECRET = ["synthetic", "bypass", randomBytes(8).toString("hex")].join("-");
+const SYNTHETIC_SERVER_KEY = ["synthetic", "server", randomBytes(8).toString("hex")].join("-");
 
 test.describe("env resolution", () => {
   test("no variables: local mode keeps today's behaviour", () => {
@@ -30,13 +34,13 @@ test.describe("env resolution", () => {
       E2E_BASE_URL: "https://staging.example.test/some/path?x=1",
       E2E_VERCEL_BYPASS: SYNTHETIC_SECRET,
       E2E_SUPABASE_URL: "https://project.supabase.example.test",
-      E2E_SUPABASE_SERVER_KEY: "synthetic-server-key",
+      E2E_SUPABASE_SERVER_KEY: SYNTHETIC_SERVER_KEY,
       E2E_RUN_ID: "Run42",
       E2E_EVENT_SLUG: "qa-open-5k",
     });
     expect(e2e).toMatchObject({ remote: true, baseURL: "https://staging.example.test", localDb: false, runId: "run42", eventSlug: "qa-open-5k", workers: 2 });
     expect(e2e.bypassHeaders).toEqual({ [BYPASS_HEADER]: SYNTHETIC_SECRET });
-    expect(e2e.adminOtp).toEqual({ url: "https://project.supabase.example.test", key: "synthetic-server-key" });
+    expect(e2e.adminOtp).toEqual({ url: "https://project.supabase.example.test", key: SYNTHETIC_SERVER_KEY });
     expect(e2e.fixtureLog).toContain("fixtures-run42.ndjson");
   });
 
@@ -50,13 +54,13 @@ test.describe("env resolution", () => {
         E2E_BASE_URL: "https://staging.example.test",
         E2E_VERCEL_BYPASS: SYNTHETIC_SECRET,
         E2E_SUPABASE_URL: "https://project.supabase.example.test",
-        E2E_SUPABASE_SERVER_KEY: "synthetic-server-key",
+        E2E_SUPABASE_SERVER_KEY: SYNTHETIC_SERVER_KEY,
       }),
     );
     expect(summary).toContain("bypass=set");
     expect(summary).toContain("sign-in=admin-otp");
     expect(summary).not.toContain(SYNTHETIC_SECRET);
-    expect(summary).not.toContain("synthetic-server-key");
+    expect(summary).not.toContain(SYNTHETIC_SERVER_KEY);
     expect(summary).not.toContain("project.supabase");
   });
 
@@ -187,7 +191,7 @@ test.describe("admin OTP fixture hook (against a stand-in GoTrue admin API)", ()
     logFile = join(mkdtempSync(join(tmpdir(), "e2e-fixtures-")), "fixtures.ndjson");
     for (const key of KEYS) saved[key] = process.env[key];
     process.env.E2E_SUPABASE_URL = `http://127.0.0.1:${(server.address() as AddressInfo).port}`;
-    process.env.E2E_SUPABASE_SERVER_KEY = "synthetic-server-key";
+    process.env.E2E_SUPABASE_SERVER_KEY = SYNTHETIC_SERVER_KEY;
     process.env.E2E_FIXTURE_LOG = logFile;
     process.env.E2E_RUN_ID = "harness1";
     process.env.E2E_BASE_URL = "https://staging.example.test";
@@ -212,14 +216,14 @@ test.describe("admin OTP fixture hook (against a stand-in GoTrue admin API)", ()
 
     const create = calls.find((call) => call.url.endsWith("/admin/users"));
     expect(create?.body).toMatchObject({ email, email_confirm: true });
-    expect(create?.apikey).toBe("synthetic-server-key");
+    expect(create?.apikey).toBe(SYNTHETIC_SERVER_KEY);
     expect(calls.find((call) => call.url.endsWith("/admin/generate_link"))?.body).toMatchObject({ type: "magiclink", email });
 
     const log = readFileSync(logFile, "utf8").trim().split(NL).map((line) => JSON.parse(line) as Record<string, string>);
     expect(log).toHaveLength(1);
     expect(log[0]).toMatchObject({ run_id: "harness1", target: "staging.example.test", kind: "auth_user", email, created: true });
     expect(log[0].auth_user_id).toMatch(/^[0-9a-f-]{36}$/);
-    expect(JSON.stringify(log)).not.toContain("synthetic-server-key");
+    expect(JSON.stringify(log)).not.toContain(SYNTHETIC_SERVER_KEY);
   });
 
   test("is idempotent: an existing fixture user is reused, not re-created or re-logged", async () => {
