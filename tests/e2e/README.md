@@ -141,8 +141,9 @@ E2E_BASE_URL=https://staging.runiismty.com E2E_VERCEL_BYPASS=... E2E_SUPABASE_UR
 * **Expired hold**: the browser clock is fast-forwarded 24 h (Playwright `clock`), so the countdown, which is computed from the
   server's `expires_at` and `server_time`, flips by itself; locally the hold's columns are also moved in the DB and the next buyer
   takes the released place. The "countdown comes from the server" proof moves the device clock three days ahead and still reads about 24 h.
-* **Friend**: FREE needs the Friend's own acceptance before submit (done through the pending-actions contract, see the finding about
-  the missing screen); WhatsApp lets the request exist, staff cannot confirm until the Friend accepts in `/cuenta`, and then can.
+* **Friend**: FREE needs the Friend's own acceptance before submit: the buyer copies the deep link and the Friend accepts on
+  `/cuenta/documentos/evento/{slug}` (P2-G2/G4; the guardian of a minor uses the same screen); WhatsApp lets the request exist,
+  staff cannot confirm until the Friend accepts in `/cuenta`, and then can.
 * **Credential replacement**: staff replace the credential through `POST /admin/passes/{id}/replace-credential`; the participant's
   view says the previous QR no longer works and the new render differs from the old one.
 
