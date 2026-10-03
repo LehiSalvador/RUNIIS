@@ -1,22 +1,34 @@
 /**
- * Single source of truth for which public routes exist in this build. A shell nav item (header,
- * mobile drawer, footer) may only link to a route listed here: a link to a route that is not built
- * 404s on click and, in production, on Next's viewport prefetch of every public page.
+ * Single source of truth for which shell-navigable routes exist in this build (public, account and
+ * admin shells). A shell nav item (header, drawer, sidebar, footer) may only link to a route listed
+ * here: a link to a route that is not built 404s on click and, in production, on Next's viewport
+ * prefetch of every page that renders it. The admin shell has no pages yet (Phase 3), so no
+ * "/admin/*" route is listed; its nav is hidden for real use and shown as non-navigating,
+ * aria-disabled entries in the design-system preview only (AdminShell `navMode="preview"`).
  *
  * To ship a route: add its path here in the same change that adds its page. Routes planned for a
  * later phase stay in the candidate lists in public-header.tsx / public-footer.tsx and simply
  * appear once they are listed here (e.g. "/ranking" -> Phase 4).
  */
-export const AVAILABLE_PUBLIC_ROUTES: readonly string[] = [
+export const AVAILABLE_ROUTES: readonly string[] = [
   "/eventos",
   "/runiis",
   "/contacto",
   "/legal/terminos",
   "/legal/privacidad",
+  "/cuenta",
+  "/cuenta/perfil",
+  "/cuenta/amigos",
+  "/cuenta/invitados",
+  "/cuenta/menores",
+  "/cuenta/solicitudes",
+  "/cuenta/pases",
+  "/cuenta/favoritos",
+  "/cuenta/comunicaciones",
 ];
 
 export function isRouteAvailable(href: string): boolean {
-  return AVAILABLE_PUBLIC_ROUTES.includes(href);
+  return AVAILABLE_ROUTES.includes(href);
 }
 
 /** Keeps only the links whose route exists in this build, preserving order. */

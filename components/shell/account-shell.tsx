@@ -7,12 +7,13 @@ import { Menu } from "lucide-react";
 import { cn } from "@/lib/client/cn";
 import { isNavItemActive } from "@/lib/client/nav";
 import { Container } from "@/components/shell/container";
+import { availableLinks } from "@/components/shell/nav-availability";
 import { Wordmark } from "@/components/shell/wordmark";
 import { SkipLink } from "@/components/shell/skip-link";
 import { IconButton } from "@/components/ui/icon-button";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
 
-export const ACCOUNT_NAV_ITEMS = [
+const ACCOUNT_NAV_CANDIDATES = [
   { href: "/cuenta", label: "Resumen" },
   { href: "/cuenta/perfil", label: "Perfil" },
   { href: "/cuenta/amigos", label: "Amigos" },
@@ -23,6 +24,8 @@ export const ACCOUNT_NAV_ITEMS = [
   { href: "/cuenta/favoritos", label: "Favoritos" },
   { href: "/cuenta/comunicaciones", label: "Comunicaciones" },
 ] as const;
+
+export const ACCOUNT_NAV_ITEMS = availableLinks(ACCOUNT_NAV_CANDIDATES);
 
 function AccountNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
