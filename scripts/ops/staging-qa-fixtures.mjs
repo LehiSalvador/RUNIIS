@@ -428,7 +428,89 @@ async function ensureEdition(api, spec, plan, legalDocuments) {
   return out;
 }
 
+// ---------------------------------------------------------------------------------------------------------
+// Isolated per-run editions (P2-E journey E2E). The journey specs never register into the owner-facing
+// `qa-p2-*` editions: every run (worker) creates its own editions through the same admin API, named
+// `qa-e2e-<runId>-<key>`, with its own capacities, and hides them again when it is done. Same target guards
+// as the rest of this script (resolveConfig): staging project only, or loopback in explicit local mode.
+// ---------------------------------------------------------------------------------------------------------
+
+export const E2E_SLUG_PREFIX = "qa-e2e-";
+const E2E_SLUG = /^qa-e2e-[a-z0-9]{3,24}-[a-z0-9]+(-[a-z0-9]+)*$/;
+
+/** Refuses anything that is not an isolated per-run slug (never `qa-p2-*`, never a seeded/real edition). */
+export function assertIsolatedSlug(slug) {
+  if (typeof slug !== "string" || !E2E_SLUG.test(slug) || slug.length > 100) {
+    throw new FixtureError(`refused: isolated editions must be named ${E2E_SLUG_PREFIX}<runId>-<key> (got ${String(slug).slice(0, 60)})`);
+  }
+}
+
+/** Pure: the fixture spec of one isolated edition. It reuses the qa-p2 definition of the same mode (forms, categories,
+ * prices) so the journeys exercise the same shape the owner sees, with its own slug and capacity. */
+export function isolatedEditionSpec({ runId, key, mode, capacity = 15, whatsapp = "+525555550100" }) {
+  if (mode !== "FREE" && mode !== "EXTERNAL_WHATSAPP") throw new FixtureError("isolated edition mode must be FREE or EXTERNAL_WHATSAPP");
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 50) throw new FixtureError("isolated edition capacity must be 1-50");
+  const slug = `${E2E_SLUG_PREFIX}${String(runId).toLowerCase()}-${String(key).toLowerCase()}`;
+  assertIsolatedSlug(slug);
+  const base = fixtureSpecs(whatsapp).find((spec) => spec.mode === mode);
+  return {
+    ...base,
+    slug,
+    eventName: `QA E2E ${runId} ${key} (datos de prueba efimeros)`,
+    editionName: `QA E2E ${key} - ${mode === "FREE" ? "gratis" : "WhatsApp"} (prueba efimera)`,
+    modalities: base.modalities.map((modality) => ({ ...modality, capacity })),
+    description: `[QA E2E] Edicion efimera de la corrida ${runId}: la crea una prueba automatica y se oculta al terminar. No es un evento real.`,
+  };
+}
+
+/** Signs in as the QA GLOBAL ADMIN (env-injected, same mechanism as the converge mode) and returns a session the
+ * journey specs use to create/hide isolated editions and to run staff actions (confirm, replace credential). */
+export async function openFixtureSession(env = process.env) {
+  const cfg = resolveConfig(env, []);
+  const api = createClientSession(cfg);
+  await api.signIn();
+  await ensureAdmin(api);
+  return { cfg, api, legal: null };
+}
+
+/** Creates (or converges) one isolated edition and returns its ids. Nothing outside `qa-e2e-*` is touched. */
+export async function createIsolatedEdition(session, options) {
+  const spec = isolatedEditionSpec({ whatsapp: session.cfg.whatsapp, ...options });
+  session.legal ??= await ensureGlobalLegal(session.api, false, { legal: [] });
+  const created = await ensureEdition(session.api, spec, false, session.legal);
+  return { ...created, mode: spec.mode, name: spec.editionName };
+}
+
+/** Hides one isolated edition (public surfaces stop serving it). Returns false instead of throwing: cleanup is best effort. */
+export async function hideIsolatedEdition(session, edition) {
+  assertIsolatedSlug(edition.slug);
+  try {
+    await session.api.post(`/api/v1/admin/editions/${edition.edition_id}/hide`, { reason: "QA E2E run finished" }, `qa-e2e-hide-${edition.edition_id}`);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Hides every still-published edition of one run (crash recovery): `--hide-e2e-run=<runId>`. */
+export async function hideIsolatedRun(session, runId) {
+  const prefix = `${E2E_SLUG_PREFIX}${String(runId).toLowerCase()}-`;
+  assertIsolatedSlug(`${prefix}x`);
+  const items = (await session.api.get(`/api/v1/admin/events?search=${encodeURIComponent(prefix)}&limit=50`)).data;
+  const hidden = [];
+  for (const item of items.filter((entry) => entry.slug.startsWith(prefix))) {
+    if (await hideIsolatedEdition(session, item)) hidden.push(item.slug);
+  }
+  return hidden;
+}
+
 export async function main(env = process.env, argv = process.argv.slice(2)) {
+  const hideRun = argv.find((arg) => arg.startsWith("--hide-e2e-run="))?.slice("--hide-e2e-run=".length);
+  if (hideRun) {
+    const session = await openFixtureSession(env);
+    process.stdout.write(`${JSON.stringify({ ok: true, mode: "hide-e2e-run", hidden: await hideIsolatedRun(session, hideRun) })}\n`);
+    return;
+  }
   const cfg = resolveConfig(env, argv);
   if (cfg.mode === "prepare-admin") return prepareAdmin(cfg);
 
