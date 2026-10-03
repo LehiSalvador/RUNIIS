@@ -107,6 +107,14 @@ function issueMessage(issue: Issue): { text: string; step: StepId } {
   }
 }
 
+/**
+ * The banner to show for a failed submit. F-3: an expired session is announced once, by SessionExpiredAlert (it carries the
+ * sign-in action), so the generic banner is dropped to avoid saying "Tu sesión terminó" twice.
+ */
+export function bannerToShow(action: Pick<FailureAction, "banner" | "sessionExpired">): FailureAction["banner"] | null {
+  return action.sessionExpired ? null : action.banner;
+}
+
 const CAPACITY_CODES = new Set(["CAPACITY_UNAVAILABLE", "GLOBAL_CAPACITY_UNAVAILABLE"]);
 
 const WINDOW_COPY: Record<string, string> = {

@@ -11,6 +11,7 @@ import { errorMessage } from "@/lib/client/account-errors";
 import type { ApiFailure } from "@/lib/client/api";
 import type { RegistrationCandidate, RegistrationContext } from "@/lib/shared/registration-context";
 import { candidateName, RelationBadge, StepHeading } from "./bits";
+import { editionDocumentsPath } from "@/components/account/logic/edition-documents";
 import { LegalDocumentButton } from "./legal-document-dialog";
 import { legalStatus, type Draft, type LegalRow } from "./logic/model";
 
@@ -97,12 +98,13 @@ function acceptorLine(candidate: RegistrationCandidate): string | null {
   }
 }
 
-function PendingOther({ candidate, mode, onRefresh, refreshing }: { candidate: RegistrationCandidate; mode: RegistrationContext["edition"]["registration_mode"]; onRefresh: () => void; refreshing: boolean }) {
+function PendingOther({ candidate, mode, editionSlug, onRefresh, refreshing }: { candidate: RegistrationCandidate; mode: RegistrationContext["edition"]["registration_mode"]; editionSlug: string; onRefresh: () => void; refreshing: boolean }) {
   const [url, setUrl] = React.useState<string | null>(null);
   const name = candidate.display_name ?? "esta persona";
 
   async function copy() {
-    const link = `${window.location.origin}/cuenta`;
+    // Deep link to the edition's acceptance screen (signed-out visitors sign in and come back to it).
+    const link = `${window.location.origin}${editionDocumentsPath(editionSlug)}`;
     try {
       await navigator.clipboard.writeText(link);
       toast({ tone: "success", title: "Enlace copiado", description: `Envíaselo a ${name} para que acepte.` });
@@ -121,11 +123,11 @@ function PendingOther({ candidate, mode, onRefresh, refreshing }: { candidate: R
           : "Puedes enviar la solicitud: el organizador no podrá confirmarla hasta que acepte, y debe hacerlo antes de que venza el apartado."}
       </p>
       <div className="flex flex-col gap-2 sm:flex-row">
-        {candidate.acceptance.acceptor === "PARTICIPANT" ? (
+        {candidate.acceptance.acceptor === "PARTICIPANT" || candidate.acceptance.acceptor === "OTHER_GUARDIAN" ? (
           <Button variant="secondary" size="sm" onClick={copy}>
             <Copy className="size-4" aria-hidden="true" />
             Copiar enlace
-            <span className="sr-only"> para {name}</span>
+            <span className="sr-only"> para {candidate.acceptance.acceptor === "OTHER_GUARDIAN" ? `el responsable de ${name}` : name}</span>
           </Button>
         ) : null}
         <Button variant="secondary" size="sm" loading={refreshing} onClick={onRefresh}>
@@ -146,6 +148,7 @@ function PendingOther({ candidate, mode, onRefresh, refreshing }: { candidate: R
 function ParticipantLegalCard({
   row,
   mode,
+  editionSlug,
   onAccepted,
   onRefresh,
   refreshing,
@@ -153,6 +156,7 @@ function ParticipantLegalCard({
 }: {
   row: LegalRow;
   mode: RegistrationContext["edition"]["registration_mode"];
+  editionSlug: string;
   onAccepted: (candidateKey: string, versionId: string, accepted: boolean) => void;
   onRefresh: () => void;
   refreshing: boolean;
@@ -204,7 +208,7 @@ function ParticipantLegalCard({
           );
         })}
       </ul>
-      {row.pendingOther ? <PendingOther candidate={candidate} mode={mode} onRefresh={onRefresh} refreshing={refreshing} /> : null}
+      {row.pendingOther ? <PendingOther candidate={candidate} mode={mode} editionSlug={editionSlug} onRefresh={onRefresh} refreshing={refreshing} /> : null}
       {canAccept && row.documents.some((doc) => doc.missing) && acceptorLine(candidate) ? <p className="text-body-sm text-ink-60">{acceptorLine(candidate)}</p> : null}
     </section>
   );
@@ -249,6 +253,7 @@ export function StepLegal({
           key={row.candidate.candidate_key}
           row={row}
           mode={ctx.edition.registration_mode}
+          editionSlug={ctx.edition.slug}
           onAccepted={onAccepted}
           onRefresh={onRefresh}
           refreshing={refreshing}

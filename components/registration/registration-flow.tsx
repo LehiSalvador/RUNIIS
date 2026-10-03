@@ -13,7 +13,7 @@ import { focusControl, participantScope } from "./bits";
 import { fieldControlId } from "./dynamic-field";
 import { blockedState } from "./logic/availability";
 import { clearDraft, loadDraft, saveDraft } from "./logic/draft-storage";
-import { describeRefreshFailure, interpretCreateFailure, type BannerTone, type FailureAction } from "./logic/errors";
+import { bannerToShow, describeRefreshFailure, interpretCreateFailure, type BannerTone, type FailureAction } from "./logic/errors";
 import {
   STEP_IDS,
   STEP_LABELS,
@@ -246,7 +246,7 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
   }
 
   function applyFailure(action: FailureAction) {
-    setBanner(action.banner);
+    setBanner(bannerToShow(action));
     setServerErrors({ rows: action.rowErrors, fields: action.fieldErrors, categories: action.categoryErrors });
     if (action.sessionExpired) setSessionExpired(true);
     if (action.accountBlocked) {
