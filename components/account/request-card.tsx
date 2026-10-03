@@ -2,33 +2,16 @@
 
 import React from "react";
 import Link from "next/link";
-import { ArrowRight, MessageCircle } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowRight } from "lucide-react";
 import { CountdownStatus } from "@/components/ui/countdown-status";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { useLiveRequestStatus, WhatsAppButton } from "@/components/registration/request-parts";
 import { formatMoney, pluralize } from "@/lib/client/account-format";
 import type { RequestView } from "@/lib/client/account-types";
 import { presentRequest } from "@/lib/client/request-status";
-import type { RequestStatus } from "@/lib/shared/registration";
 
-/** Live status of one request: the server's effective status, flipped to EXPIRED by the countdown itself. */
-export function useLiveRequestStatus(request: Pick<RequestView, "effective_status">): [RequestStatus, () => void] {
-  const [expired, setExpired] = React.useState(false);
-  const status: RequestStatus = expired && request.effective_status === "PENDING_CONFIRMATION" ? "EXPIRED" : request.effective_status;
-  return [status, () => setExpired(true)];
-}
-
-export function WhatsAppButton({ href, size = "md", className }: { href: string; size?: "sm" | "md" | "lg"; className?: string }) {
-  return (
-    <Button asChild size={size} className={className}>
-      <a href={href} target="_blank" rel="noopener noreferrer">
-        <MessageCircle className="size-4" aria-hidden="true" />
-        Completar por WhatsApp
-        <span className="sr-only"> (se abre en una pestaña nueva)</span>
-      </a>
-    </Button>
-  );
-}
+// Shared with /inscripcion's outcome view (components/registration/request-parts); re-exported for existing imports.
+export { useLiveRequestStatus, WhatsAppButton };
 
 /** ui-spec §4.8 request card: pending first-class (countdown + WhatsApp), others as a quiet summary row. */
 export function RequestCard({ request }: { request: RequestView }) {
@@ -72,6 +55,14 @@ export function RequestCard({ request }: { request: RequestView }) {
       ) : (
         <p className="text-body-sm text-ink-80">{presentation.summary}</p>
       )}
+      {status === "EXPIRED" ? (
+        <p className="text-body-sm text-ink-80" data-testid="request-card-expired-next">
+          El lugar anterior no se restaura.{" "}
+          <Link href={`/inscripcion/${request.edition.slug}`} className="font-semibold text-ink underline underline-offset-4">
+            Empezar una solicitud nueva<span className="sr-only"> para {request.edition.name}</span>
+          </Link>
+        </p>
+      ) : null}
 
       <Link
         href={`/cuenta/solicitudes/${request.registration_request_id}`}

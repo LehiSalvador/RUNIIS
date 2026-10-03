@@ -2,11 +2,12 @@
 
 import React from "react";
 import Link from "next/link";
-import { QrCode } from "lucide-react";
+import { Clock, QrCode } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QrCodeView } from "@/components/ui/qr-code-view";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { KindBadge } from "@/components/account/section";
+import { passState } from "@/components/account/logic/pass-state";
 import { cn } from "@/lib/client/cn";
 import type { PassView } from "@/lib/client/account-types";
 import { focusWhenDialogsClosed } from "@/lib/client/focus";
@@ -33,6 +34,21 @@ export function holderLabel(pass: PassView): string {
   return `Pase de ${pass.participant.display_name ?? "tu invitado"}`;
 }
 
+/** Badge for a pass that is not valid (revoked / canceled / registration no longer confirmed) or whose code is being renewed; null while valid. */
+export function PassStateBadge({ pass }: { pass: PassView }) {
+  const state = passState(pass);
+  if (state.kind === "VALID") return null;
+  if (state.kind === "RENEWING") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-info-border bg-info-tint px-2.5 py-0.5 text-caption font-semibold text-info">
+        <Clock className="size-3.5" aria-hidden="true" />
+        {state.label}
+      </span>
+    );
+  }
+  return <StatusBadge state="CANCELED" label={state.label} />;
+}
+
 /** Calendar tile: the event date as a results-board numeral (Archivo Narrow). */
 export function DateTile({ isoDate, className }: { isoDate: string | null; className?: string }) {
   if (!isoDate) {
@@ -57,11 +73,11 @@ export function DateTile({ isoDate, className }: { isoDate: string | null; class
 export function PassRow({ pass, detailLink = true }: { pass: PassView; detailLink?: boolean }) {
   const [open, setOpen] = React.useState(false);
   const trigger = React.useRef<HTMLButtonElement>(null);
-  const active = pass.status === "ACTIVE";
+  const state = passState(pass);
   const headingId = `pass-${pass.participant_pass_id}`;
 
   return (
-    <li className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center" data-testid="pass-row" aria-labelledby={headingId}>
+    <li className="flex flex-col gap-4 p-5 sm:flex-row sm:items-center" data-testid="pass-row" data-pass-state={state.kind} aria-labelledby={headingId}>
       <div className="flex min-w-0 flex-1 gap-4">
         <DateTile isoDate={pass.edition.event_date} />
         <div className="min-w-0 flex-1">
@@ -75,7 +91,7 @@ export function PassRow({ pass, detailLink = true }: { pass: PassView; detailLin
                 pass.edition.name
               )}
             </h3>
-            {!active ? <StatusBadge state="CANCELED" label={pass.status === "REVOKED" ? "Revocado" : "Cancelado"} /> : null}
+            <PassStateBadge pass={pass} />
           </div>
           <p className="mt-1 flex flex-wrap items-center gap-2 text-body-sm text-ink-80">
             <span className="font-semibold text-ink">{holderLabel(pass)}</span>
@@ -97,9 +113,10 @@ export function PassRow({ pass, detailLink = true }: { pass: PassView; detailLin
               </dd>
             </div>
           </dl>
+          {state.kind === "RENEWING" ? <p className="mt-2 text-body-sm text-ink-60">{state.message}</p> : null}
         </div>
       </div>
-      {active ? (
+      {state.canShowQr ? (
         <>
           <Button ref={trigger} variant="secondary" onClick={() => setOpen(true)} className="w-full sm:w-auto">
             <QrCode className="size-4" aria-hidden="true" />

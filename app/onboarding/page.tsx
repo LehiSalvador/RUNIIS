@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { loadLegalDocument } from "@/app/(public)/_lib/legal";
-import { loadAccount } from "@/app/cuenta/_lib/session";
+import { settle, loadAccount } from "@/app/cuenta/_lib/session";
 import { AuthFrame } from "@/components/account/auth-frame";
-import { OnboardingForm, type PlatformLegalVersions } from "@/components/account/onboarding-form";
+import { OnboardingForm } from "@/components/account/onboarding-form";
 import { RestrictedAccount } from "@/components/account/restricted-account";
+import { SectionError } from "@/components/account/section-error";
 import { SignOutButton } from "@/components/account/sign-out-button";
 import { resolveNextPath } from "@/lib/server/auth/safe-redirect";
+import { getMyLegalStatus } from "@/lib/server/domain/auth/service";
 
 export const metadata: Metadata = {
   title: "Completa tu perfil",
@@ -17,6 +18,8 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 // Master §16 / J8 step 4: one resumable form. Reopening always starts from what the profile already
 // holds (GET-equivalent ensure_runner_profile), and a READY profile never sees this page again.
+// OWN-05: the TERMS_OF_SERVICE / PRIVACY_NOTICE versions come from the account's own legal status (GET /me/legal), so the
+// ids the form sends are exactly the versions shown. Without them the form cannot be submitted (fail closed, no invented text).
 export default async function OnboardingPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
   const next = resolveNextPath(typeof params.next === "string" ? params.next : null);
@@ -31,11 +34,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
   }
   if (account.profile.profile_readiness === "READY") redirect(next);
 
-  const [terms, privacy] = await Promise.all([loadLegalDocument("terminos"), loadLegalDocument("privacidad")]);
-  const legal: PlatformLegalVersions = {
-    terms: terms.status === "published" ? terms.version : null,
-    privacy: privacy.status === "published" ? privacy.version : null,
-  };
+  const legal = await settle(getMyLegalStatus(account.supabase));
 
   return (
     <AuthFrame
@@ -44,7 +43,11 @@ export default async function OnboardingPage({ searchParams }: { searchParams: S
       lead="Te lo pedimos una sola vez. Con estos datos podrás inscribirte a carreras y registrar a tus invitados."
       headerAction={<SignOutButton variant="ghost" size="sm" />}
     >
-      <OnboardingForm profile={account.profile} next={next} legal={legal} />
+      {legal.ok ? (
+        <OnboardingForm profile={account.profile} next={next} legal={legal.data.documents} />
+      ) : (
+        <SectionError code={legal.code} title="No pudimos cargar los documentos legales." />
+      )}
     </AuthFrame>
   );
 }

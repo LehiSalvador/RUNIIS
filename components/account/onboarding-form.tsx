@@ -3,10 +3,12 @@
 import React from "react";
 import { Alert } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
+import { LegalConsent } from "@/components/account/legal-acceptance";
+import { isAccountLegalFailure, legalVersionsKey, pendingLegalDocuments, type AccountLegalDocument } from "@/components/account/logic/legal";
 import { PersonFieldsForm } from "@/components/account/person-fields-form";
 import { apiFetch, newIdempotencyKey } from "@/lib/client/api";
 import { errorMessage, invalidFields } from "@/lib/client/account-errors";
+import type { AccountLegalStatusResponse } from "@/lib/shared/legal";
 import {
   FIELD_MESSAGES,
   PERSON_FIELD_ORDER,
@@ -21,8 +23,6 @@ import {
   type PersonFields,
 } from "@/lib/client/person-fields";
 
-export type PlatformLegalVersions = { terms: number | null; privacy: number | null };
-
 type OnboardingProfile = {
   full_name: string | null;
   date_of_birth: string | null;
@@ -35,7 +35,13 @@ type OnboardingProfile = {
 
 const AFTER_BIRTH_DATE: ReadonlySet<PersonField> = new Set(["sex_code", "phone_e164", "emergency_contact_name", "emergency_contact_phone_e164", "emergency_contact_relationship"]);
 
-export function OnboardingForm({ profile, next, legal }: { profile: OnboardingProfile; next: string; legal: PlatformLegalVersions }) {
+/**
+ * One resumable form (Master §16). OWN-05: the TERMS_OF_SERVICE / PRIVACY_NOTICE versions in `legalDocuments` (from GET /me/legal)
+ * are shown with an unticked, explicit acceptance control, and the ids of those versions travel in `legal_document_version_ids`,
+ * so the acceptance is the person's own act and is recorded against the exact versions displayed. Acceptance is never implied.
+ */
+export function OnboardingForm({ profile, next, legal: legalDocuments }: { profile: OnboardingProfile; next: string; legal: readonly AccountLegalDocument[] }) {
+  const [documents, setDocuments] = React.useState(legalDocuments);
   const [values, setValues] = React.useState<PersonFields>({
     full_name: profile.full_name ?? "",
     date_of_birth: profile.date_of_birth,
@@ -46,16 +52,20 @@ export function OnboardingForm({ profile, next, legal }: { profile: OnboardingPr
     emergency_contact_relationship: profile.emergency_contact_relationship ?? "",
   });
   const [errors, setErrors] = React.useState<Map<PersonField, string>>(new Map());
-  const [legalAccepted, setLegalAccepted] = React.useState(false);
+  const [legalTickedFor, setLegalTickedFor] = React.useState<string | null>(null);
   const [legalError, setLegalError] = React.useState<string | undefined>();
   const [formError, setFormError] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const fieldElements = React.useRef(new Map<PersonField, HTMLElement | null>());
   const legalRef = React.useRef<HTMLButtonElement>(null);
+  const pendingDocuments = pendingLegalDocuments(documents);
+  // The tick is bound to the exact versions on screen: a version published meanwhile no longer counts.
+  const legalKey = legalVersionsKey(pendingDocuments);
+  const legalAccepted = legalTickedFor === legalKey && legalKey !== "";
 
   const today = todayInBusinessZone();
   const band = values.date_of_birth && values.date_of_birth <= today ? ageBand(ageOn(values.date_of_birth, today)) : null;
-  const legalRequired = legal.terms !== null || legal.privacy !== null;
+  const legalRequired = pendingDocuments.length > 0;
 
   function change(field: PersonField, value: string | null) {
     setValues((current) => ({ ...current, [field]: value ?? (field === "date_of_birth" ? null : "") }));
@@ -92,7 +102,10 @@ export function OnboardingForm({ profile, next, legal }: { profile: OnboardingPr
     setPending(true);
     const result = await apiFetch("/api/v1/me/onboarding", {
       method: "POST",
-      body: toPersonPayload(values),
+      body: {
+        ...toPersonPayload(values),
+        ...(documents.length > 0 ? { legal_document_version_ids: documents.map((document) => document.legal_document_version_id) } : {}),
+      },
       idempotencyKey: newIdempotencyKey(),
     });
     if (result.ok || result.code === "CONFLICT") {
@@ -102,6 +115,20 @@ export function OnboardingForm({ profile, next, legal }: { profile: OnboardingPr
     setPending(false);
     if (result.code === "IDENTITY_LOCKED" || result.code === "ACCOUNT_BANNED" || result.code === "FORBIDDEN") {
       window.location.reload();
+      return;
+    }
+    if (isAccountLegalFailure(result)) {
+      // A version was superseded (or a document was missing): re-read the current ones and ask again.
+      const fresh = await apiFetch<AccountLegalStatusResponse>("/api/v1/me/legal");
+      if (fresh.ok) setDocuments(fresh.data.documents);
+      setLegalTickedFor(null);
+      setLegalError(
+        result.details.reason === "VERSION_NOT_CURRENT"
+          ? "Se publicó una versión nueva de los documentos. Léelos y acéptalos de nuevo."
+          : "Debes aceptar los documentos para continuar.",
+      );
+      setFormError("Revisa los datos marcados.");
+      legalRef.current?.focus();
       return;
     }
     const serverFields = invalidFields(result);
@@ -156,42 +183,17 @@ export function OnboardingForm({ profile, next, legal }: { profile: OnboardingPr
         <>
           {legalRequired ? (
             <div className="mt-4 border-t border-divider pt-5">
-              <div className="flex items-start gap-1">
-                <Checkbox
-                  ref={legalRef}
-                  id="onboarding-legal"
-                  checked={legalAccepted}
-                  onCheckedChange={(checked) => {
-                    setLegalAccepted(checked === true);
-                    if (checked === true) setLegalError(undefined);
-                  }}
-                  aria-invalid={legalError ? true : undefined}
-                  aria-describedby={legalError ? "onboarding-legal-error" : undefined}
-                  className="-ml-3 -mt-2.5"
-                />
-                <label htmlFor="onboarding-legal" className="text-body text-ink">
-                  Acepto{" "}
-                  {legal.terms !== null ? (
-                    <a href="/legal/terminos" target="_blank" rel="noopener" className="font-semibold underline underline-offset-4">
-                      los Términos y condiciones (versión {legal.terms})
-                    </a>
-                  ) : null}
-                  {legal.terms !== null && legal.privacy !== null ? " y " : null}
-                  {legal.privacy !== null ? (
-                    <a href="/legal/privacidad" target="_blank" rel="noopener" className="font-semibold underline underline-offset-4">
-                      el Aviso de privacidad (versión {legal.privacy})
-                    </a>
-                  ) : null}
-                  .
-                </label>
-              </div>
-              <div className="min-h-[1.25rem] pl-8 text-caption">
-                {legalError ? (
-                  <p id="onboarding-legal-error" role="alert" className="text-danger">
-                    {legalError}
-                  </p>
-                ) : null}
-              </div>
+              <LegalConsent
+                id="onboarding-legal"
+                documents={pendingDocuments}
+                checked={legalAccepted}
+                checkboxRef={legalRef}
+                error={legalError}
+                onCheckedChange={(checked) => {
+                  setLegalTickedFor(checked ? legalKey : null);
+                  if (checked) setLegalError(undefined);
+                }}
+              />
             </div>
           ) : null}
 
