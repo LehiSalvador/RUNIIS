@@ -69,18 +69,27 @@ describe("public shell links point only to routes that exist", () => {
 describe("admin and account shells never link to an unbuilt route", () => {
   const hrefsIn = (html: string) => [...html.matchAll(/<a[^>]*\shref="([^"]+)"/g)].map((m) => m[1]);
 
-  test("admin shell (live): no /admin/* nav entry is rendered while no admin page exists", async () => {
+  test("admin shell (live): only built /admin routes are ever rendered, and none without explicit permitted keys", async () => {
     const { AdminShell } = await import("@/components/shell/admin-shell");
-    const html = renderToStaticMarkup(<AdminShell pageTitle="Dashboard" navMode="live">
+    const all = ["dashboard", "tareas", "eventos", "solicitudes", "participantes", "asistencia", "cierre", "auditoria"] as const;
+    const html = renderToStaticMarkup(
+      <AdminShell pageTitle="Dashboard" navMode="live" visibleNavKeys={all}>
         x
-      </AdminShell>);
-    expect(hrefsIn(html).filter((href) => href.startsWith("/admin"))).toEqual([]);
+      </AdminShell>,
+    );
+    // Phase 3 so far builds only the dashboard and the events list; everything else stays out of the DOM.
+    expect([...new Set(hrefsIn(html).filter((href) => href.startsWith("/admin")))].sort()).toEqual(["/admin", "/admin/eventos"]);
     expect(html).not.toContain("Participantes");
-    // the wordmark falls back to the site home instead of the unbuilt /admin
-    expect(hrefsIn(html)).toContain("/");
+    expect(html).not.toContain("aria-disabled");
+    const closed = renderToStaticMarkup(
+      <AdminShell pageTitle="Dashboard" navMode="live">
+        x
+      </AdminShell>,
+    );
+    expect(hrefsIn(closed).filter((href) => href.startsWith("/admin") && href !== "/admin")).toEqual([]);
   });
 
-  test("admin shell on /design-system (default mode): full nav design as non-navigating aria-disabled entries", async () => {
+  test("admin shell on /design-system (default mode): built routes navigate, unbuilt ones are non-navigating aria-disabled entries", async () => {
     const { AdminShell } = await import("@/components/shell/admin-shell");
     const keys = ["dashboard", "tareas", "eventos", "solicitudes", "participantes", "asistencia"] as const;
     const html = renderToStaticMarkup(
@@ -88,8 +97,8 @@ describe("admin and account shells never link to an unbuilt route", () => {
         x
       </AdminShell>,
     );
-    expect(hrefsIn(html).filter((href) => href.startsWith("/admin"))).toEqual([]);
-    expect(html.match(/role="link" aria-disabled="true"/g)).toHaveLength(keys.length);
+    expect([...new Set(hrefsIn(html).filter((href) => href.startsWith("/admin")))].sort()).toEqual(["/admin", "/admin/eventos"]);
+    expect(html.match(/role="link" aria-disabled="true"/g)).toHaveLength(keys.length - 2);
     expect(html).toContain("Participantes");
   });
 

@@ -6,29 +6,15 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import { cn } from "@/lib/client/cn";
 import { isNavItemActive } from "@/lib/client/nav";
+import { ADMIN_NAV_ITEMS, type AdminNavKey } from "@/components/shell/admin-nav-items";
 import { isRouteAvailable } from "@/components/shell/nav-availability";
 import { SkipLink } from "@/components/shell/skip-link";
 import { Wordmark } from "@/components/shell/wordmark";
 import { IconButton } from "@/components/ui/icon-button";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
 
-export const ADMIN_NAV_ITEMS = [
-  { key: "dashboard", href: "/admin", label: "Dashboard" },
-  { key: "tareas", href: "/admin/tareas", label: "Tareas" },
-  { key: "eventos", href: "/admin/eventos", label: "Eventos" },
-  { key: "solicitudes", href: "/admin/solicitudes", label: "Solicitudes" },
-  { key: "participantes", href: "/admin/participantes", label: "Participantes" },
-  { key: "kits", href: "/admin/kits", label: "Kits" },
-  { key: "asistencia", href: "/admin/asistencia", label: "Asistencia" },
-  { key: "cierre", href: "/admin/cierre", label: "Cierre" },
-  { key: "comunidad", href: "/admin/comunidad", label: "Comunidad" },
-  { key: "usuarios", href: "/admin/usuarios", label: "Usuarios" },
-  { key: "comunicaciones", href: "/admin/comunicaciones", label: "Comunicaciones" },
-  { key: "auditoria", href: "/admin/auditoria", label: "Auditoría" },
-  { key: "ajustes", href: "/admin/ajustes", label: "Ajustes" },
-] as const;
-
-export type AdminNavKey = (typeof ADMIN_NAV_ITEMS)[number]["key"];
+export { ADMIN_NAV_ITEMS };
+export type { AdminNavKey };
 
 /**
  * Defaults to "preview" on /design-system/* and "live" everywhere else.
@@ -54,7 +40,13 @@ function AdminNav({
   const pathname = usePathname();
   // Default: the /design-system preview shows the full nav design; every real route is "live".
   const mode: AdminNavMode = navMode ?? (pathname?.startsWith("/design-system") ? "preview" : "live");
-  const permitted = visibleKeys ? ADMIN_NAV_ITEMS.filter((item) => visibleKeys.includes(item.key)) : ADMIN_NAV_ITEMS;
+  // Fail closed: a live shell with no explicit permitted keys renders no section links. Only the
+  // design-system preview (no role) shows the whole nav design.
+  const permitted = visibleKeys
+    ? ADMIN_NAV_ITEMS.filter((item) => visibleKeys.includes(item.key))
+    : mode === "preview"
+      ? ADMIN_NAV_ITEMS
+      : [];
   const items = mode === "preview" ? permitted : permitted.filter((item) => isRouteAvailable(item.href));
 
   return (
@@ -100,18 +92,22 @@ function AdminNav({
  * lives in a Drawer. Nav items outside `visibleNavKeys` are not rendered at all (RBAC hides, the
  * server still enforces); items whose route is not built follow `navMode`. Content is fluid up to
  * 1600px, body-sm by default. `actions` renders at the right of the page title (primary page actions).
+ * `sidebarFooter` (staff identity + sign-out) sits at the bottom of the sidebar and of the mobile drawer.
+ * A live shell without `visibleNavKeys` shows no section links (fail closed).
  */
 export function AdminShell({
   pageTitle,
   visibleNavKeys,
   navMode,
   actions,
+  sidebarFooter,
   children,
 }: {
   pageTitle: string;
   visibleNavKeys?: readonly AdminNavKey[];
   navMode?: AdminNavMode;
   actions?: React.ReactNode;
+  sidebarFooter?: React.ReactNode;
   children: React.ReactNode;
 }) {
   const [navOpen, setNavOpen] = React.useState(false);
@@ -130,6 +126,7 @@ export function AdminShell({
           </DrawerTrigger>
           <DrawerContent title="Administración" side="responsive">
             <AdminNav visibleKeys={visibleNavKeys} navMode={navMode} onNavigate={() => setNavOpen(false)} />
+            {sidebarFooter ? <div className="mt-6">{sidebarFooter}</div> : null}
           </DrawerContent>
         </Drawer>
         <Wordmark href={homeHref} />
@@ -143,6 +140,7 @@ export function AdminShell({
               <p className="mt-2 text-caption text-ink-60">Administración</p>
             </div>
             <AdminNav visibleKeys={visibleNavKeys} navMode={navMode} />
+            {sidebarFooter ? <div className="mt-auto">{sidebarFooter}</div> : null}
           </div>
         </aside>
         <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-4 py-6 outline-none md:px-8 md:py-8">

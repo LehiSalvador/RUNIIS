@@ -1,0 +1,102 @@
+import { isRouteAvailable } from "@/components/shell/nav-availability";
+import { canAccessSection, hasRoleForEdition, NAV_ACCESS, type StaffAssignment } from "@/components/admin/access";
+import type { AdminNavKey } from "@/components/shell/admin-nav-items";
+
+/**
+ * Quick links from the Edition overview to the sections later Work Units build. Each candidate declares
+ * the route PATTERN that must exist in this build (AVAILABLE_ROUTES) and the nav key whose role matrix gates
+ * it. A link appears only when its route is built AND the viewer's role can open it, so a later unit ships
+ * a section by (1) adding its page, (2) adding its pattern to AVAILABLE_ROUTES: no link ever points at a
+ * missing page, and none is shown to a role that cannot use it.
+ */
+export type EditionLinkCandidate = {
+  key: string;
+  label: string;
+  description: string;
+  /** Route pattern checked against AVAILABLE_ROUTES (dynamic segments in [brackets]). */
+  route: string;
+  /** Nav section whose role matrix gates the link. */
+  section: AdminNavKey;
+  href: (editionId: string) => string;
+};
+
+export const EDITION_LINK_CANDIDATES: readonly EditionLinkCandidate[] = [
+  {
+    key: "configuracion",
+    label: "Configuración y publicación",
+    description: "Fechas, modalidades, precios y readiness.",
+    route: "/admin/eventos/[editionId]/configuracion",
+    section: "eventos",
+    href: (id) => `/admin/eventos/${id}/configuracion`,
+  },
+  {
+    key: "ruta",
+    label: "Ruta",
+    description: "GPX, inicio, meta y puntos de interés.",
+    route: "/admin/eventos/[editionId]/ruta",
+    section: "eventos",
+    href: (id) => `/admin/eventos/${id}/ruta`,
+  },
+  {
+    key: "solicitudes",
+    label: "Solicitudes",
+    description: "Apartados pendientes de confirmar o cancelar.",
+    route: "/admin/solicitudes",
+    section: "solicitudes",
+    href: (id) => `/admin/solicitudes?edition_id=${id}`,
+  },
+  {
+    key: "participantes",
+    label: "Participantes",
+    description: "Inscripciones confirmadas y su estado.",
+    route: "/admin/participantes",
+    section: "participantes",
+    href: (id) => `/admin/participantes?edition_id=${id}`,
+  },
+  {
+    key: "kits",
+    label: "Kits",
+    description: "Definiciones, inventario y entrega.",
+    route: "/admin/kits",
+    section: "kits",
+    href: (id) => `/admin/kits?edition_id=${id}`,
+  },
+  {
+    key: "asistencia",
+    label: "Asistencia",
+    description: "Resolución de asistencia y elegibilidad.",
+    route: "/admin/asistencia",
+    section: "asistencia",
+    href: (id) => `/admin/asistencia?edition_id=${id}`,
+  },
+  {
+    key: "cierre",
+    label: "Cierre",
+    description: "Finalización y cierre administrativo.",
+    route: "/admin/cierre",
+    section: "cierre",
+    href: (id) => `/admin/cierre?edition_id=${id}`,
+  },
+];
+
+export type EditionLink = { key: string; label: string; description: string; href: string };
+
+export function editionQuickLinks(
+  editionId: string,
+  assignments: readonly StaffAssignment[],
+  routeAvailable: (route: string) => boolean = isRouteAvailable,
+  candidates: readonly EditionLinkCandidate[] = EDITION_LINK_CANDIDATES,
+): EditionLink[] {
+  return candidates
+    .filter((candidate) => routeAvailable(candidate.route))
+    .filter(
+      (candidate) =>
+        canAccessSection(assignments, candidate.section) && hasRoleForEdition(assignments, NAV_ACCESS[candidate.section], editionId),
+    )
+    .map((candidate) => ({
+      key: candidate.key,
+      label: candidate.label,
+      description: candidate.description,
+      href: candidate.href(editionId),
+    }));
+}
