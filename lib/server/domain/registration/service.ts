@@ -145,7 +145,7 @@ export async function adminListRegistrationRequests(
     },
     adminRegistrationRequestPageSchema,
   );
-  return { items: page.items.map(withWhatsAppUrl), nextCursor: writeRequestCursor(page.next_cursor), counts: page.counts };
+  return { items: page.items.map(withWhatsAppUrl), nextCursor: writeRequestCursor(page.next_cursor), counts: page.counts ?? {} };
 }
 
 export async function confirmRegistrationRequest(supabase: SupabaseClient, id: string, idempotencyKey: string | null) {

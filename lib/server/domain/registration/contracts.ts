@@ -28,7 +28,9 @@ export const registrationRequestPageSchema = z.strictObject({
 export const adminRegistrationRequestPageSchema = z.strictObject({
   items: z.array(registrationRequestSchema),
   next_cursor: requestCursorSchema,
-  counts: z.record(z.enum(REQUEST_STATUSES), z.number().int()),
+  // jsonb_object_agg yields SQL NULL on an Edition without requests and only the effective statuses that exist
+  // otherwise, so `counts` is nullable and partial (z.record over an enum would demand every status key).
+  counts: z.partialRecord(z.enum(REQUEST_STATUSES), z.number().int()).nullable(),
 });
 
 // ---- Participants (Master §172) ----
