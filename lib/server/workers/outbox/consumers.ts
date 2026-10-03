@@ -23,4 +23,6 @@ export const outboxConsumerRegistry: OutboxConsumerRegistry = {
   EditionPostponed: { rpc: "enqueue_edition_event_messages", maxAttempts: 8 },
   EditionRescheduled: { rpc: "enqueue_edition_event_messages", maxAttempts: 8 },
   EditionCanceled: { rpc: "enqueue_edition_event_messages", maxAttempts: 8 },
+  // P3-C OWN-04: the participant (the buyer for a Guest) is always emailed when staff cancel a confirmed registration.
+  RegistrationCanceled: { rpc: "enqueue_registration_canceled_messages", maxAttempts: 10 },
 };
