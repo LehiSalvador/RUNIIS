@@ -2,7 +2,7 @@
 
 Three projects (`chromium-desktop` 1280x900, `chromium-mobile` 390x844, `chromium-tablet` 768x1024), two modes.
 Nothing in this directory contains a secret; every credential comes from the environment of the process that runs
-the suite.
+the suite, and failure output is scrubbed of headers and cookies (see "Failure output never carries a secret").
 
 ## Local mode (default)
 
@@ -25,9 +25,9 @@ DB, and skips (with a printed reason) every spec that needs seeded Editions or l
 
 | Variable | Required | Meaning |
 | --- | --- | --- |
-| `E2E_BASE_URL` | yes (switches the mode) | Target origin, e.g. `https://staging.runiismty.com`. `https` unless loopback. |
+| `E2E_BASE_URL` | yes (switches the mode) | Target origin: exactly `https://staging.runiismty.com` or a loopback address. Anything else is refused (see "Target guard"). |
 | `E2E_VERCEL_BYPASS` | if the target is behind Vercel Authentication | Automation-bypass secret, sent as `x-vercel-protection-bypass`. |
-| `E2E_SUPABASE_URL` + `E2E_SUPABASE_SERVER_KEY` | to sign in (both or neither) | The target's Supabase URL and server (secret) key, used only to mint an OTP. |
+| `E2E_SUPABASE_URL` + `E2E_SUPABASE_SERVER_KEY` | to sign in (both or neither) | The staging project URL (`https://brxdgvcfykmsqmhsvgxl.supabase.co`) or the local stack (loopback), and its server (secret) key, used only to mint an OTP. |
 | `E2E_EVENT_SLUG` | for event specs | Slug of an OPEN, published QA Edition on the target. Without it the event/home/library-with-events specs skip with `no fixture Edition`. |
 | `E2E_RUN_ID` | no | `[a-z0-9]{3,24}`; part of the fixture email. Generated when unset. |
 | `E2E_FIXTURE_LOG` | no | NDJSON file listing created fixture users. Default `.salvaops-agent-evidence/P2-A-e2e-harness-revalidation/fixtures-<run>.ndjson`. |
@@ -39,6 +39,33 @@ Run it (values injected into the process environment by whoever owns them; never
 E2E_BASE_URL=... E2E_VERCEL_BYPASS=... E2E_SUPABASE_URL=... E2E_SUPABASE_SERVER_KEY=... E2E_EVENT_SLUG=... \
   pnpm exec playwright test --project=chromium-desktop
 ```
+
+### Target guard (H2P2-06)
+
+`resolveE2eEnv` (`support/env.ts`, used by the config and every helper) refuses, before any request, an `E2E_BASE_URL` that is
+not `https://staging.runiismty.com` (default port, no credentials) or loopback, and an `E2E_SUPABASE_URL` that is not the
+staging project or loopback. A production URL, a production key's project or a look-alike host cannot create QA users
+there. The staging host and project ref are the same constants `scripts/ops/staging-qa-fixtures.mjs` enforces (a unit test
+pins them together); `ALLOW_PRODUCTION_MUTATIONS` is no longer the only barrier.
+
+### Failure output never carries a secret (H2P2-04)
+
+Playwright appends a call log to API failures (timeout, socket error) that lists every request header, including the bypass
+secret from `extraHTTPHeaders` and the session cookie, and writes the same errors to an `error-context.md` attachment.
+Three layers keep that out of stdout, `playwright-report` and `test-results`:
+
+* `support/redacting-reporter.ts` is the **first** reporter in `playwright.config.ts`. It scrubs message, stack, snippet and cause
+  of every test, step and global error, and rewrites each `error-context.md`, in place, before `list` and `html` read them
+  (`support/redact.ts`: known secret values, an allow-list of harmless call-log headers, credential-shaped strings, URL queries).
+* `support/safe-request.ts` (`safeApi`) wraps the API helpers in `support/account.ts` (sign-in, `/me`, onboarding, legal): a failed
+  call throws `API <METHOD> <path> failed: <reason>` and nothing else.
+* Never use the response `toBeOK` matcher (its message prints the response headers); assert `response.status()`. A unit test
+  fails if one appears under `tests/e2e`.
+
+`tests/unit/harness/error-redaction.test.ts` proves it against a real Playwright API context (the control asserts the raw
+error does carry the secret). The remaining guarantee is the existing one: traces and videos are off remotely and the banner
+and fixture log print presence flags and ids only. A spec that prints headers itself (`console.log(response.headers())`) is
+outside what the reporter can see.
 
 ### What remote mode does
 
@@ -159,7 +186,7 @@ E2E_BASE_URL=https://staging.runiismty.com E2E_VERCEL_BYPASS=... E2E_SUPABASE_UR
 | `account/**` | Sign-in/OTP/onboarding, profile and states, friends, guests, guardians, requests, passes, favourites, communications. |
 | `foundation/**` | Design system and shells. |
 | `journeys/**` | Phase 2 participant journeys (Roadmap 8.22) on isolated per-run editions; see "Participant journeys" below. |
-| `support/**` | `env.ts` (mode resolution), `remote-auth.ts`, `bypass.ts`, `targets.ts` (what a target offers), account/axe/fixtures helpers. |
+| `support/**` | `env.ts` (mode resolution + target guard), `remote-auth.ts`, `bypass.ts`, `targets.ts` (what a target offers), `redact.ts` / `redacting-reporter.ts` / `safe-request.ts` (secret-free failure output), account/axe/fixtures helpers. |
 
 Roadmap 8.3 mapping: Home, Event library, Event page, SEO -> `public/**` + `revalidation/surfaces`; Login/OTP/Onboarding ->
 `account/sign-in` + `revalidation/surfaces`; Google OAuth -> `revalidation/google-oauth`; Cuenta, Friends, Guests, Guardian ->

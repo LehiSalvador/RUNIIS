@@ -8,6 +8,7 @@ import { scanForSeriousViolations } from "./axe";
 import { protectBypass } from "./bypass";
 import { BYPASS_HEADER, e2eEnv, type E2eEnv } from "./env";
 import { expect as baseExpect, test as base } from "./fixtures";
+import { verifyWaitMessage, verifyWaitSeconds, VERIFY_RETRIES } from "./rate-limit";
 import { adminOtpFor } from "./remote-auth";
 
 /**
@@ -464,11 +465,23 @@ export async function signInThroughUi(page: Page, email: string): Promise<void> 
   await page.route("**/api/v1/auth/otp", (route) =>
     route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ data: { accepted: true } }) }),
   );
-  await page.getByLabel("Correo electrónico").fill(email);
-  await page.getByRole("button", { name: "Enviar código" }).click();
-  await expect(page.getByRole("status").filter({ hasText: email })).toBeVisible({ timeout: 30_000 });
-  await page.getByLabel("Código de 6 dígitos").fill(await freshCode(email));
-  await page.getByRole("button", { name: "Entrar" }).click();
+  // Local: one submit, unchanged (the IP buckets are reset by the API helpers). Remote: auth.verify.ip allows 30 per
+  // 10 minutes per IP, so a 429 on verify is waited out (Retry-After, capped) and the sign-in repeated, like signInViaApi.
+  const waitOut429 = !e2eEnv().localDb;
+  for (let attempt = 0; ; attempt++) {
+    await page.getByLabel("Correo electrónico").fill(email);
+    await page.getByRole("button", { name: "Enviar código" }).click();
+    await expect(page.getByRole("status").filter({ hasText: email })).toBeVisible({ timeout: 30_000 });
+    await page.getByLabel("Código de 6 dígitos").fill(await freshCode(email));
+    const verified = waitOut429 ? page.waitForResponse((response) => response.url().includes("/api/v1/auth/verify") && response.request().method() === "POST", { timeout: 30_000 }).catch(() => null) : null;
+    await page.getByRole("button", { name: "Entrar" }).click();
+    const response = verified ? await verified : null;
+    if (!response || response.status() !== 429 || attempt >= VERIFY_RETRIES) return;
+    const seconds = verifyWaitSeconds(response.headers()["retry-after"]);
+    console.log(verifyWaitMessage("ui", seconds, attempt + 1));
+    await new Promise((resolve) => setTimeout(resolve, seconds * 1000));
+    await page.reload();
+  }
 }
 
 /** True once React has attached to the page (a click before that is silently lost in a dev server). */

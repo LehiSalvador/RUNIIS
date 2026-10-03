@@ -6,7 +6,7 @@ import { protectBypass } from "../support/bypass";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BYPASS_HEADER, SKIP_TOOLBAR_HEADER, describeE2eEnv, E2eConfigError, e2eEnv, resetE2eEnvCache, resolveE2eEnv } from "../support/env";
+import { BYPASS_HEADER, SKIP_TOOLBAR_HEADER, STAGING_HOST, STAGING_SUPABASE_REF, describeE2eEnv, E2eConfigError, e2eEnv, resetE2eEnvCache, resolveE2eEnv } from "../support/env";
 import { adminOtpFor, fixtureEmailFor, resetAdminClientCache } from "../support/remote-auth";
 
 // Harness self-test (P2-A): proves the local/remote env plumbing without any real secret and without
@@ -21,6 +21,9 @@ const NL = String.fromCharCode(10);
 // keeps the "never leaked" assertions meaningful.
 const SYNTHETIC_SECRET = ["synthetic", "bypass", randomBytes(8).toString("hex")].join("-");
 const SYNTHETIC_SERVER_KEY = ["synthetic", "server", randomBytes(8).toString("hex")].join("-");
+// Remote mode only accepts the staging origin / project or loopback (H2P2-06): the plumbing uses those.
+const STAGING_URL = `https://${STAGING_HOST}`;
+const STAGING_SUPABASE_URL = `https://${STAGING_SUPABASE_REF}.supabase.co`;
 
 test.describe("env resolution", () => {
   test("no variables: local mode keeps today's behaviour", () => {
@@ -31,22 +34,22 @@ test.describe("env resolution", () => {
 
   test("remote: base URL, bypass header, admin OTP and fixture pattern come from the environment", () => {
     const e2e = resolveE2eEnv({
-      E2E_BASE_URL: "https://staging.example.test/some/path?x=1",
+      E2E_BASE_URL: `${STAGING_URL}/some/path?x=1`,
       E2E_VERCEL_BYPASS: SYNTHETIC_SECRET,
-      E2E_SUPABASE_URL: "https://project.supabase.example.test",
+      E2E_SUPABASE_URL: STAGING_SUPABASE_URL,
       E2E_SUPABASE_SERVER_KEY: SYNTHETIC_SERVER_KEY,
       E2E_RUN_ID: "Run42",
       E2E_EVENT_SLUG: "qa-open-5k",
     });
-    expect(e2e).toMatchObject({ remote: true, baseURL: "https://staging.example.test", localDb: false, runId: "run42", eventSlug: "qa-open-5k", workers: 2 });
+    expect(e2e).toMatchObject({ remote: true, baseURL: STAGING_URL, localDb: false, runId: "run42", eventSlug: "qa-open-5k", workers: 2 });
     expect(e2e.bypassHeaders).toEqual({ [BYPASS_HEADER]: SYNTHETIC_SECRET });
     expect(e2e.extraHeaders).toEqual({ [SKIP_TOOLBAR_HEADER]: "1", [BYPASS_HEADER]: SYNTHETIC_SECRET });
-    expect(e2e.adminOtp).toEqual({ url: "https://project.supabase.example.test", key: SYNTHETIC_SERVER_KEY });
+    expect(e2e.adminOtp).toEqual({ url: STAGING_SUPABASE_URL, key: SYNTHETIC_SERVER_KEY });
     expect(e2e.fixtureLog).toContain("fixtures-run42.ndjson");
   });
 
   test("remote without a bypass secret still asks Vercel to skip the toolbar", () => {
-    expect(resolveE2eEnv({ E2E_BASE_URL: "https://staging.example.test" }).extraHeaders).toEqual({ [SKIP_TOOLBAR_HEADER]: "1" });
+    expect(resolveE2eEnv({ E2E_BASE_URL: STAGING_URL }).extraHeaders).toEqual({ [SKIP_TOOLBAR_HEADER]: "1" });
   });
 
   test("a loopback target keeps the local DB available (rehearsal of remote mode)", () => {
@@ -56,9 +59,9 @@ test.describe("env resolution", () => {
   test("the printable summary never contains a secret", () => {
     const summary = describeE2eEnv(
       resolveE2eEnv({
-        E2E_BASE_URL: "https://staging.example.test",
+        E2E_BASE_URL: STAGING_URL,
         E2E_VERCEL_BYPASS: SYNTHETIC_SECRET,
-        E2E_SUPABASE_URL: "https://project.supabase.example.test",
+        E2E_SUPABASE_URL: STAGING_SUPABASE_URL,
         E2E_SUPABASE_SERVER_KEY: SYNTHETIC_SERVER_KEY,
       }),
     );
@@ -66,15 +69,15 @@ test.describe("env resolution", () => {
     expect(summary).toContain("sign-in=admin-otp");
     expect(summary).not.toContain(SYNTHETIC_SECRET);
     expect(summary).not.toContain(SYNTHETIC_SERVER_KEY);
-    expect(summary).not.toContain("project.supabase");
+    expect(summary).not.toContain(STAGING_SUPABASE_REF);
   });
 
   for (const [name, env] of [
     ["bypass without a remote target", { E2E_VERCEL_BYPASS: SYNTHETIC_SECRET }],
-    ["plain http to a non-loopback host", { E2E_BASE_URL: "http://staging.example.test" }],
+    ["plain http to a non-loopback host", { E2E_BASE_URL: `http://${STAGING_HOST}` }],
     ["malformed base URL", { E2E_BASE_URL: "not a url" }],
-    ["Supabase URL without a key", { E2E_BASE_URL: "https://staging.example.test", E2E_SUPABASE_URL: "https://x.example.test" }],
-    ["Supabase key without a URL", { E2E_BASE_URL: "https://staging.example.test", E2E_SUPABASE_SERVER_KEY: "k" }],
+    ["Supabase URL without a key", { E2E_BASE_URL: STAGING_URL, E2E_SUPABASE_URL: STAGING_SUPABASE_URL }],
+    ["Supabase key without a URL", { E2E_BASE_URL: STAGING_URL, E2E_SUPABASE_SERVER_KEY: "k" }],
     ["unsafe run id", { E2E_RUN_ID: "../etc" }],
     ["unsafe event slug", { E2E_EVENT_SLUG: "Not A Slug" }],
   ] as const) {
@@ -205,7 +208,7 @@ test.describe("admin OTP fixture hook (against a stand-in GoTrue admin API)", ()
     process.env.E2E_SUPABASE_SERVER_KEY = SYNTHETIC_SERVER_KEY;
     process.env.E2E_FIXTURE_LOG = logFile;
     process.env.E2E_RUN_ID = "harness1";
-    process.env.E2E_BASE_URL = "https://staging.example.test";
+    process.env.E2E_BASE_URL = STAGING_URL;
     resetE2eEnvCache();
     resetAdminClientCache();
   });
@@ -232,7 +235,7 @@ test.describe("admin OTP fixture hook (against a stand-in GoTrue admin API)", ()
 
     const log = readFileSync(logFile, "utf8").trim().split(NL).map((line) => JSON.parse(line) as Record<string, string>);
     expect(log).toHaveLength(1);
-    expect(log[0]).toMatchObject({ run_id: "harness1", target: "staging.example.test", kind: "auth_user", email, created: true });
+    expect(log[0]).toMatchObject({ run_id: "harness1", target: STAGING_HOST, kind: "auth_user", email, created: true });
     expect(log[0].auth_user_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(JSON.stringify(log)).not.toContain(SYNTHETIC_SERVER_KEY);
   });

@@ -15,7 +15,8 @@ if (e2e.remote && !process.env.PW_E2E_BANNER_PRINTED) {
  * (E2E_BASE_URL set, see tests/e2e/support/env.ts and tests/e2e/README.md): no dev server, the Vercel
  * automation-bypass header (E2E_VERCEL_BYPASS) and x-vercel-skip-toolbar are sent on every request through
  * extraHTTPHeaders and stripped from third-party origins by the fixtures in tests/e2e/support/fixtures.ts, and traces and
- * videos stay off so the secret can never land in an artifact. Three projects cover the
+ * videos stay off so the secret can never land in an artifact. Remote mode only accepts the staging origin or loopback
+ * (tests/e2e/support/env.ts), and failure output is scrubbed of headers and cookies by the first reporter. Three projects cover the
  * desktop/mobile/tablet matrix.
  */
 export default defineConfig({
@@ -24,7 +25,9 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI || e2e.remote ? 1 : 0,
   workers: e2e.workers,
-  reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
+  // The redacting reporter MUST stay first: it scrubs the call logs Playwright appends to API failures (request
+  // headers incl. the bypass secret and cookies) before list/html format them (H2P2-04).
+  reporter: [["./tests/e2e/support/redacting-reporter.ts"], ["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   use: {
     baseURL: e2e.baseURL,
     extraHTTPHeaders: e2e.extraHeaders,

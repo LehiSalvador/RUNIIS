@@ -12,6 +12,12 @@ import { randomBytes } from "node:crypto";
  * through the app's own /api/v1/auth/verify, and anything that needs local SQL or seeded Editions is
  * skipped with a reason. Every variable is optional; none of them is ever written to a file or log.
  *
+ * TARGET GUARD (H2P2-06): remote mode is only for staging or the local stack. E2E_BASE_URL must be
+ * https://staging.runiismty.com or a loopback origin, and E2E_SUPABASE_URL must be the staging project or a loopback
+ * address; anything else (production, a preview of another project, a real mailbox's project) is refused before any
+ * request, so an operator mistake cannot create QA users in production. This mirrors scripts/ops/staging-qa-fixtures.mjs
+ * (a unit test pins the two constants to it).
+ *
  *   E2E_BASE_URL              target origin, e.g. https://staging.runiismty.com
  *   E2E_VERCEL_BYPASS         Vercel Deployment Protection automation-bypass secret (remote only)
  *   E2E_SUPABASE_URL          Supabase project URL of the target (admin OTP)
@@ -40,6 +46,9 @@ export type E2eEnv = {
 };
 
 export const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:3100";
+/** The only non-loopback targets a remote E2E run may touch (same values as scripts/ops/staging-qa-fixtures.mjs). */
+export const STAGING_HOST = "staging.runiismty.com";
+export const STAGING_SUPABASE_REF = "brxdgvcfykmsqmhsvgxl";
 export const BYPASS_HEADER = "x-vercel-protection-bypass";
 /** Documented by Vercel for automated tests: keeps the Preview Toolbar (a vercel.live iframe the app CSP rightly blocks) out of the page. */
 export const SKIP_TOOLBAR_HEADER = "x-vercel-skip-toolbar";
@@ -48,6 +57,28 @@ const DEFAULT_FIXTURE_LOG_DIR = ".salvaops-agent-evidence/P2-A-e2e-harness-reval
 export class E2eConfigError extends Error {}
 
 const LOOPBACK = new Set(["127.0.0.1", "localhost", "[::1]", "::1"]);
+
+function isLoopback(url: URL): boolean {
+  return LOOPBACK.has(url.hostname);
+}
+
+/** Refuses any E2E_BASE_URL that is neither the staging origin (https, default port, no credentials) nor loopback. */
+function assertBaseTarget(url: URL): void {
+  if (url.username || url.password) throw new E2eConfigError("E2E_BASE_URL must not carry credentials");
+  if (isLoopback(url)) return;
+  if (url.protocol !== "https:" || url.hostname !== STAGING_HOST || url.port !== "") {
+    throw new E2eConfigError(`refused: E2E_BASE_URL must be https://${STAGING_HOST} or a loopback address`);
+  }
+}
+
+/** Refuses any E2E_SUPABASE_URL that is neither the staging project nor a loopback address (the local stack). */
+function assertSupabaseTarget(url: URL): void {
+  if (url.username || url.password) throw new E2eConfigError("E2E_SUPABASE_URL must not carry credentials");
+  if (isLoopback(url)) return;
+  if (url.protocol !== "https:" || url.hostname !== `${STAGING_SUPABASE_REF}.supabase.co` || url.port !== "") {
+    throw new E2eConfigError(`refused: E2E_SUPABASE_URL must be the staging project (${STAGING_SUPABASE_REF}) or a loopback address`);
+  }
+}
 
 function clean(value: string | undefined): string | undefined {
   const trimmed = value?.trim();
@@ -70,6 +101,7 @@ export function resolveE2eEnv(env: Record<string, string | undefined> = process.
     if (parsed.protocol !== "https:" && parsed.protocol !== "http:") throw new E2eConfigError("E2E_BASE_URL must be http(s)");
     loopback = LOOPBACK.has(parsed.hostname);
     if (parsed.protocol === "http:" && !loopback) throw new E2eConfigError("E2E_BASE_URL must be https unless it targets loopback");
+    assertBaseTarget(parsed);
     baseURL = parsed.origin;
   }
 
@@ -82,11 +114,13 @@ export function resolveE2eEnv(env: Record<string, string | undefined> = process.
     throw new E2eConfigError("E2E_SUPABASE_URL and E2E_SUPABASE_SERVER_KEY must be provided together");
   }
   if (supabaseUrl !== undefined) {
+    let parsedSupabase: URL;
     try {
-      new URL(supabaseUrl);
+      parsedSupabase = new URL(supabaseUrl);
     } catch {
       throw new E2eConfigError("E2E_SUPABASE_URL is not a valid URL");
     }
+    assertSupabaseTarget(parsedSupabase);
   }
 
   const runId = clean(env.E2E_RUN_ID)?.toLowerCase() ?? `${Date.now().toString(36)}${randomBytes(2).toString("hex")}`;

@@ -61,13 +61,11 @@ test.describe("fixture environment", () => {
     expect(() => script.resolveConfig(env)).toThrow(/production/);
   });
 
-  test("a non-staging target is refused by the script even with every variable present", async () => {
+  test("a non-staging target is refused by the harness and, independently, by the script, even with every variable present", async () => {
+    const production = { E2E_BASE_URL: "https://www.runiismty.com", E2E_SUPABASE_URL: STAGING_SUPABASE, E2E_SUPABASE_SERVER_KEY: SYNTHETIC_SERVER_KEY };
+    expect(() => resolveE2eEnv(production)).toThrow(/staging\.runiismty\.com/);
     const script = await loadFixtureScript();
-    const env = fixtureEnv(
-      resolveE2eEnv({ E2E_BASE_URL: "https://www.runiismty.com", E2E_SUPABASE_URL: STAGING_SUPABASE, E2E_SUPABASE_SERVER_KEY: SYNTHETIC_SERVER_KEY }),
-      { QA_ADMIN_EMAIL: "qa.admin@example.com" },
-    );
-    expect(() => script.resolveConfig(env)).toThrow(/staging\.runiismty\.com/);
+    expect(() => script.resolveConfig({ ...production, QA_ADMIN_EMAIL: "qa.admin@example.com" })).toThrow(/staging\.runiismty\.com/);
   });
 });
 

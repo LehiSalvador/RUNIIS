@@ -1,9 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
-import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, type APIRequestContext, type APIResponse, type Page } from "@playwright/test";
 import { e2eEnv } from "./env";
+import { verifyWaitMessage, verifyWaitSeconds, VERIFY_RETRIES } from "./rate-limit";
 import { adminOtpFor, fixtureEmailFor } from "./remote-auth";
+import { safeApi } from "./safe-request";
 
 /**
  * F2 account e2e fixtures: real local auth only (POST /auth/otp -> Mailpit -> POST /auth/verify, the
@@ -83,7 +85,9 @@ export async function fetchOtpCode(email: string, timeoutMs = 45_000): Promise<s
  * Admin-OTP mode skips POST /auth/otp (no email is sent) and verifies the generated code directly;
  * a 429 on verify (auth.verify.ip: 30 per 10 min per client IP) is waited out a few times.
  */
-export async function signInViaApi(request: APIRequestContext, email: string): Promise<void> {
+export async function signInViaApi(rawRequest: APIRequestContext, email: string): Promise<void> {
+  // safeApi: a transport failure reports method + path + reason, never Playwright's header-laden call log (H2P2-04).
+  const request = safeApi(rawRequest);
   resetAuthIpBuckets();
   if (!usesAdminOtp()) {
     const otp = await request.post("/api/v1/auth/otp", { data: { email } });
@@ -92,8 +96,9 @@ export async function signInViaApi(request: APIRequestContext, email: string): P
   const code = await fetchOtpCode(email);
   const origin = new URL(e2eEnv().baseURL).origin;
   let verify = await request.post("/api/v1/auth/verify", { data: { email, code }, headers: { Origin: origin } });
-  for (let attempt = 0; attempt < 3 && verify.status() === 429 && !e2eEnv().localDb; attempt++) {
-    const waitSeconds = Math.min(Number(verify.headers()["retry-after"] ?? 60) || 60, 90);
+  for (let attempt = 0; attempt < VERIFY_RETRIES && verify.status() === 429 && !e2eEnv().localDb; attempt++) {
+    const waitSeconds = verifyWaitSeconds(verify.headers()["retry-after"]);
+    console.log(verifyWaitMessage("api", waitSeconds, attempt + 1));
     await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
     verify = await request.post("/api/v1/auth/verify", { data: { email, code }, headers: { Origin: origin } });
   }
@@ -132,10 +137,27 @@ export function birthDateForAge(years: number, daysAgo = 30): string {
 
 export type AccountUser = { email: string; runnerProfileId: string; publicProfileId: string; name: string };
 
-export async function readMe(request: APIRequestContext) {
-  const response = await request.get("/api/v1/me");
+export async function readMe(rawRequest: APIRequestContext) {
+  const response = await safeApi(rawRequest).get("/api/v1/me");
   expect(response.status()).toBe(200);
   return ((await response.json()) as { data: { runner_profile_id: string; community: { public_profile_id: string } | null } }).data;
+}
+
+/**
+ * The current TERMS_OF_SERVICE / PRIVACY_NOTICE version ids of the target (GET /me/legal). Onboarding records the
+ * acceptance of exactly these (P2-G5 requires them; sending them is valid before and after it).
+ */
+export async function currentLegalVersionIds(rawRequest: APIRequestContext): Promise<string[]> {
+  const response = await safeApi(rawRequest).get("/api/v1/me/legal");
+  expect(response.status(), "legal status").toBe(200);
+  const body = (await response.json()) as { data: { documents: { legal_document_version_id: string }[] } };
+  return body.data.documents.map((document) => document.legal_document_version_id);
+}
+
+/** POST /me/onboarding for `person`, always sending the current account-level legal versions ([] only when none is published). */
+export async function postOnboarding(rawRequest: APIRequestContext, person: PersonInput): Promise<APIResponse> {
+  const ids = await currentLegalVersionIds(rawRequest);
+  return safeApi(rawRequest).post("/api/v1/me/onboarding", { data: { ...person, legal_document_version_ids: ids } });
 }
 
 /** Signed-in, READY account (onboarding done through the real API). */
@@ -143,7 +165,7 @@ export async function createReadyUser(page: Page, label: string, person?: Partia
   const email = uniqueEmail(label);
   await signInViaApi(page.request, email);
   const name = person?.full_name ?? `Persona ${label} ${randomUUID().slice(0, 4)}`;
-  const onboarding = await page.request.post("/api/v1/me/onboarding", { data: { ...adultPerson(name), ...person, full_name: name } });
+  const onboarding = await postOnboarding(page.request, { ...adultPerson(name), ...person, full_name: name });
   expect(onboarding.status(), "onboarding").toBe(200);
   const me = await readMe(page.request);
   return { email, runnerProfileId: me.runner_profile_id, publicProfileId: me.community!.public_profile_id, name };
