@@ -19,6 +19,7 @@ RUNIIS staff operate an event end to end without SQL, Postman, the Supabase Dash
 - Hold model (Master SUP-002): `EXTERNAL_WHATSAPP` absolute 24 h hold `min(created_at + 24 h, registration_close_at)`, no extension; FREE confirms at once. V1 payment = FREE + EXTERNAL_WHATSAPP; no gateway.
 - OWN-05: TERMS + PRIVACY in onboarding (+ re-acceptance); event documents per registration and participant.
 - **OD-P2-01 anti-hoarding (owner, 2026-10-03)**: (1) ALTCHA verified server-side before accepting an `EXTERNAL_WHATSAPP` request when the account is younger than 24 h (server account age only; missing/invalid/replayed challenge → controlled domain error; no alternate endpoint bypass; FREE and accounts ≥ 24 h unaffected; accessible); (2) edition-level alert for a suspicious concentration of PENDING requests/holds, through the Task Center / operational alert model, threshold from Master/Roadmap or a documented configurable server-side constant; never auto-cancel; (3) staff bulk cancellation of PENDING requests: staff-only, auditable, idempotent, capacity released by source-of-truth transitions, no mutable `available_slots`.
+- **OWN-04 cancellation policy (owner, 2026-10-03)**: staff ADMIN/OPERATOR may cancel a CONFIRMED registration at any time until attendance is finalized (before, during or after the event); after finalization or closure only through the audited reopen/correction workflow. Never DELETE; no on-platform refund (external WhatsApp payments are settled outside); pass CANCELED, capacity released while relevant, kit allocation reviewed, credit reversed if any; **the participant is always notified by a transactional email**.
 - Staging email: allowlist only; non-allowlisted → `CANCELED / NOT_ALLOWLISTED`, no transport, no retries (migration 164).
 - Repository public; Vercel target; T41 reused intentionally, never blindly merged.
 
@@ -32,7 +33,7 @@ Out of scope (§9.36): rankings, achievements, public profiles, avatar moderatio
 
 | Item | State | Effect |
 | --- | --- | --- |
-| OWN-04 confirmed-registration cancellation policy (Master §77 "según política operativa", audit M-GAP-02) | **owner decision requested at phase start** | blocks the cancel part of the Phase 3 gate only; T41's rule (staff ADMIN/OPERATOR, CONFIRMED only, blocked after attendance finalization/closure until reopen, never DELETE, no refund) is the default being implemented |
+| OWN-04 confirmed-registration cancellation policy (Master §77, audit M-GAP-02) | **CLOSED by the owner 2026-10-03** (section 2) | — |
 | T41 migration timestamps (`20260928180xxx`) precede staging's applied history | to be renumbered after `20261003130000` (Roadmap §9.3 "decidir si renumerar") | P3-A |
 | PEND-LEGAL-001/002, PEND-OPS-001 | external | production only |
 | Phase 1/2 low/info findings | tracked | pulled in only where Phase 3 surfaces touch them |
