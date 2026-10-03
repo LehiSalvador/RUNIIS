@@ -1,4 +1,4 @@
-import { birthDateForAge, createReadyUser, signInViaApi, uniqueEmail } from "../support/account";
+import { birthDateForAge, createReadyUser, postOnboarding, signInViaApi, uniqueEmail } from "../support/account";
 import { settleNetwork } from "../support/settle";
 import {
   acceptEventDocuments,
@@ -381,19 +381,21 @@ test("Minor without a guardian and under 15 are refused: the builder blocks, the
   const younger = await browser.newContext({ baseURL });
   const youngerPage = await younger.newPage();
   await signInViaApi(youngerPage.request, uniqueEmail("under15"));
-  const onboarding = await youngerPage.request.post("/api/v1/me/onboarding", {
-    data: {
-      full_name: "Persona Menor de 15",
-      date_of_birth: birthDateForAge(14),
-      sex_code: "F",
-      phone_e164: "+528110001234",
-      emergency_contact_name: "Contacto Sintetico",
-      emergency_contact_phone_e164: "+528110005678",
-      emergency_contact_relationship: "Madre",
-    },
+  // Current legal ids are sent (postOnboarding), so the only thing wrong with this request is the age: the stable
+  // age rule answers, not the "legal_document_version_ids required" 400.
+  const onboarding = await postOnboarding(youngerPage.request, {
+    full_name: "Persona Menor de 15",
+    date_of_birth: birthDateForAge(14),
+    sex_code: "F",
+    phone_e164: "+528110001234",
+    emergency_contact_name: "Contacto Sintetico",
+    emergency_contact_phone_e164: "+528110005678",
+    emergency_contact_relationship: "Madre",
   });
-  expect(onboarding.status()).toBeGreaterThanOrEqual(400);
-  expect(onboarding.status()).toBeLessThan(500);
+  expect(onboarding.status()).toBe(400);
+  const rejection = ((await onboarding.json()) as { error: { code: string; details?: { field?: string; reason?: string } } }).error;
+  expect(rejection.code).toBe("VALIDATION_ERROR");
+  expect(rejection.details).toMatchObject({ field: "date_of_birth", reason: "UNDER_MIN_AGE" });
   const blocked = await youngerPage.request.get(`/api/v1/events/${edition.slug}/registration-context`);
   expect(blocked.status()).toBe(422);
   expect(((await blocked.json()) as { error: { code: string } }).error.code).toBe("PROFILE_INCOMPLETE");

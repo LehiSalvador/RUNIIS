@@ -165,15 +165,21 @@ test("Legal acceptance (onboarding): TERMS and PRIVACY are accepted explicitly b
 test("Legal re-acceptance (a new version): the banner, the acceptance screen, then the account is up to date", async ({ page, a11y, evidence }) => {
   test.skip(!e2eEnv().localDb, REAUTH_LOCAL);
   const user = await createReadyUser(page, "reaccept");
-  // This ONE fixture user accepted an older TERMS version; the append-only trigger is bypassed for that user's rows only.
+  // This ONE fixture user accepted an older TERMS version than the one published now. Which version is current is
+  // read at runtime (local history varies), never assumed: the older one is the highest below it, or, when the
+  // document has none, a SUPERSEDED row this journey adds. The append-only trigger is bypassed for that user's rows only.
+  const termsVersions = `from app.legal_document_version v join app.legal_document d using (legal_document_id) where d.document_key = 'TERMS_OF_SERVICE'`;
+  const currentTerms = Number(psql(`select max(v.version) ${termsVersions} and v.status = 'PUBLISHED'`));
+  expect(currentTerms, "a published TERMS_OF_SERVICE version").toBeGreaterThan(0);
+  const olderTerms = Number(psql(`select coalesce(max(v.version) filter (where v.version < ${currentTerms}), max(v.version) + 1) ${termsVersions}`));
+  expect(olderTerms).not.toBe(currentTerms);
   psql(`set local session_replication_role = replica;
     delete from app.legal_acceptance where runner_profile_id = '${user.runnerProfileId}';
     insert into app.legal_document_version (legal_document_id, version, content_markdown, status, published_at)
-      select legal_document_id, 2, 'QA superseded v2 (local journey only)', 'SUPERSEDED', now() from app.legal_document where document_key = 'TERMS_OF_SERVICE'
+      select legal_document_id, ${olderTerms}, 'QA superseded v${olderTerms} (local journey only)', 'SUPERSEDED', now() from app.legal_document where document_key = 'TERMS_OF_SERVICE'
       on conflict (legal_document_id, version) do nothing;
     insert into app.legal_acceptance (runner_profile_id, legal_document_version_id, acceptance_context)
-      select '${user.runnerProfileId}', v.legal_document_version_id, '{"via":"journey-setup"}'::jsonb from app.legal_document_version v
-      join app.legal_document d using (legal_document_id) where d.document_key = 'TERMS_OF_SERVICE' and v.version = 2;`);
+      select '${user.runnerProfileId}', v.legal_document_version_id, '{"via":"journey-setup"}'::jsonb ${termsVersions} and v.version = ${olderTerms}`);
 
   await page.goto("/cuenta/solicitudes");
   const banner = page.getByTestId("legal-banner");
@@ -188,7 +194,7 @@ test("Legal re-acceptance (a new version): the banner, the acceptance screen, th
   await expect(page).toHaveURL(/\/cuenta\/documentos\?next=%2Fcuenta%2Fsolicitudes$/);
   const panel = page.getByTestId("legal-reacceptance");
   await expect(panel).toContainText("Actualizamos nuestros documentos");
-  await expect(panel).toContainText("Aceptaste antes la versión 2");
+  await expect(panel).toContainText(`Aceptaste antes la versión ${olderTerms}`);
   const box = page.locator("#reaccept-legal");
   const accept = page.getByRole("button", { name: /Aceptar y continuar/ });
   await expect(box).toHaveAttribute("aria-checked", "false");
