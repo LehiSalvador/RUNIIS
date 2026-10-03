@@ -1,6 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import { changeModalityResultSchema, registrationStatusSchema, type CancelReasonCategory } from "@/lib/shared/closure";
 import type { CreateRegistrationRequestBody } from "@/lib/shared/registration";
 import {
   registrationContextRedirectSchema,
@@ -307,4 +308,65 @@ export async function getRegistrationContext(
       },
     },
   };
+}
+
+// ---- Confirmed-registration lifecycle (Master §77-79, OWN-04; supabase/migrations/20261004100300_713_*.sql) ----
+// Authorisation (REGISTRATION_MANAGE, Edition scope from the registration row), rate limiting, locking, capacity and the
+// cancellation policy live in the database (private.registration_cancel_policy_check). The participant is always emailed
+// by the RegistrationCanceled outbox consumer (migration 714); the free-text reason never leaves staff surfaces.
+
+export async function cancelConfirmedRegistration(
+  supabase: SupabaseClient,
+  registrationId: string,
+  body: { reason: string; reason_category?: CancelReasonCategory },
+  idempotencyKey: string | null,
+) {
+  const result = await callRpc(
+    supabase,
+    "cancel_registration",
+    {
+      p_registration_id: registrationId,
+      p_reason: body.reason,
+      p_reason_category: body.reason_category ?? "OTHER",
+      p_idempotency_key: idempotencyKey,
+    },
+    registrationStatusSchema,
+  );
+  logEvent("info", "registration_canceled_by_staff", { registration_id: registrationId, reason_category: body.reason_category ?? "OTHER" });
+  return result;
+}
+
+export async function changeRegistrationModality(
+  supabase: SupabaseClient,
+  registrationId: string,
+  body: { new_modality_id: string; category_id?: string | null; reason: string },
+  idempotencyKey: string | null,
+) {
+  const result = await callRpc(
+    supabase,
+    "change_registration_modality",
+    {
+      p_registration_id: registrationId,
+      p_new_modality_id: body.new_modality_id,
+      p_category_id: body.category_id ?? null,
+      p_reason: body.reason,
+      p_idempotency_key: idempotencyKey,
+    },
+    changeModalityResultSchema,
+  );
+  logEvent("info", "registration_modality_changed", { registration_id: registrationId, revision: result.revision });
+  return result;
+}
+
+/**
+ * Edition of a registration, for post-commit cache invalidation (REGISTRATION_MANAGE; the database checks the scope).
+ * Best effort: the command already committed, so a failed lookup must not turn it into an error response.
+ */
+export async function registrationEditionIdForStaff(supabase: SupabaseClient, registrationId: string): Promise<string | null> {
+  try {
+    return await callRpc(supabase, "registration_edition_for_staff", { p_registration_id: registrationId }, z.guid());
+  } catch {
+    logEvent("warn", "registration_edition_lookup_failed", { registration_id: registrationId });
+    return null;
+  }
 }
