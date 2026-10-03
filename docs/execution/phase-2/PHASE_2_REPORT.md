@@ -6,7 +6,8 @@ No secret values appear in this report. Variables are named, never valued. This 
 | --- | --- |
 | phase_id | `P2-PARTICIPANT-EXPERIENCE` |
 | phase_name | Complete Participant Experience (Roadmap §8) |
-| status | `TECHNICAL_PASS — AWAITING OWNER HUMAN GATE` (QA PASS after remediation, AppSec PASS, Integration & Evidence READY). The only open acceptance sub-item is the real email delivery to the owner address, which the Owner Human Gate proves |
+| status | `CLOSED — APPROVED_BY_OWNER` (owner decision 2026-10-03). Technical result before the owner gate: `TECHNICAL_PASS` (QA PASS after remediation, AppSec PASS, Integration & Evidence READY) |
+| owner_decision | `OWNER_DECISION=APPROVE` (2026-10-03), no changes requested; anti-hoarding decision OD-P2-01 recorded (section 6) |
 | report_date | 2026-10-03 (America/Monterrey / UTC) |
 | baseline_in | `staging@d5ecefd` (Phase 1 closed, owner-approved) → Phase 2 Packet `719296e` |
 | baseline_out | `staging` = `origin/staging` (this report's commit, see `git log -1 origin/staging`); last integrated code commit before the report: `6b68f9d`; `origin/wip/t41-closure-partial@b34aa74` (isolated, untouched); `main`/`origin/main@bdd1198` (placeholder, untouched) |
@@ -111,7 +112,7 @@ Open (none critical or high):
 
 | ID | Severity | Owner | Summary |
 | --- | --- | --- | --- |
-| H2P2-02 | medium | **owner decision** (section 6) | Hold hoarding: one account can hold up to 20 places for 24 h through Guests |
+| H2P2-02 | medium → `OWNER_DECISION_RESOLVED` | owner (OD-P2-01), implementation in Phase 3 | Hold hoarding: one account can hold up to 20 places for 24 h through Guests; the approved policy is in section 6 |
 | H2P2-07 | info | owner awareness | the registration context tells the buyer that an accepted Friend/ward is a minor or under 15 (age band only, no date of birth) |
 | H2P2-08 | info | frontend | the AUD-033 request-layer redirect matches the literal path; an encoded `/cuenta` variant falls back to the page guard (still authorised by page and DB) |
 | H2P2-09 | info | backend | registration-context query cost/locks acceptable for V1 |
@@ -126,7 +127,7 @@ Open (none critical or high):
 
 | Item | State / recommendation |
 | --- | --- |
-| **H2P2-02 hold hoarding** (T11 §6.6, SEC-142) | Needed **before production opening of WhatsApp editions**, not for staging. Recommended: CAPTCHA (the existing ALTCHA) on request creation for accounts younger than 24 h or flagged, a per-edition alert on PENDING requests from new accounts, and staff bulk-cancel of PENDING requests; keep identity at email OTP for V1. Implementation would be a later Work Unit. |
+| **OD-P2-01 anti-hoarding (H2P2-02, T11 §6.6, SEC-142)** | **CLOSED — approved by the owner 2026-10-03.** (1) ALTCHA verified server-side before accepting an `EXTERNAL_WHATSAPP` request when the account is younger than 24 h (account age from the server, never the client); (2) an edition-level alert for a suspicious concentration of PENDING requests/holds, through the existing Task Center / operational alert model, threshold from the Master/Roadmap or else a documented, configurable server-side constant; no automatic cancellation; (3) staff bulk cancellation of suspicious PENDING requests: staff-only, auditable, idempotent, capacity released by the source-of-truth state transitions (no mutable `available_slots`); (4) the hold model is unchanged (absolute 24 h, `min(created_at + 24 h, registration close)`, no extension; FREE confirms at once); (5) no CAPTCHA for everyone, accessible errors; (6) no payment gateway. Implemented in the earliest fitting Phase 3 Work Units. |
 | Production cutover / OWN-01 | Deferred, separate authorization (unchanged from Phase 1). |
 | PEND-LEGAL-001/002, PEND-OPS-001 | External; block production only. |
 
@@ -139,6 +140,14 @@ Production untouched. Staging: re-alias a previous Preview deployment; schema fo
 Phase 3 was not started. Phase 2 leaves the participant flow complete on staging; staff confirmation of WhatsApp requests exists as an admin API (the full Admin UI belongs to a later phase).
 
 ## 9. Owner Human Gate
+
+### Owner Human Gate result (2026-10-03)
+
+`OWNER_DECISION=APPROVE` · no changes requested.
+
+The owner reviewed staging manually and approved: entry into registration from the event, FREE registration, the WhatsApp request with its pending state, 24 h countdown and WhatsApp handoff button, the account request views, passes and QR display, sign-in/session, onboarding and legal acceptance, and the overall participant flow. Staging confirms the review (aggregate, `.salvaops-agent-evidence/P2-GATE/owner-gate-activity.txt`): one FREE registration `CONFIRMED` in `qa-p2-gratis` with its confirmation email `SENT` through Brevo to the allowlisted owner address — this proves the last open sub-item of P2-AC-13 — and one WhatsApp request `PENDING_CONFIRMATION` in `qa-p2-whatsapp` (staff confirmation was not part of the owner's review; it is covered by the E2E journeys and the request expires normally after 24 h).
+
+### Review script used
 
 Review at **https://staging.runiismty.com** (log in to Vercel with the team account when prompted). Two review editions exist only for you: **QA P2 Gratis** (`qa-p2-gratis`, FREE) and **QA P2 WhatsApp** (`qa-p2-whatsapp`, WhatsApp quote; fake staging number). Legal texts are QA placeholders, not legal text. App email reaches only your allowlisted address.
 
