@@ -6,7 +6,9 @@ No secret values appear in this report. Variables are named, never valued. This 
 | --- | --- |
 | phase_id | `P1-PLATFORM-REBASE` |
 | phase_name | Platform Rebase, Vercel Migration & Authoritative Baseline |
-| status | `TECHNICAL_PASS_WITH_OWNER_BLOCKER` — the only open owner item is the production cutover, which is out of this close; not `PHASE_APPROVED` (only the owner approves) |
+| status | `CLOSED — APPROVED_BY_OWNER` (owner decision 2026-10-03). Technical result before the owner gate: `TECHNICAL_PASS_WITH_OWNER_BLOCKER`, where the only owner item is the production cutover, deferred and outside Phase 1 implementation |
+| owner_decision | `OWNER_DECISION=APPROVE`, `OWNER_REVIEW_RESULT=PASS`, `OWNER_REVIEW_DATE=2026-10-03` |
+| phase_closed_at | 2026-10-03T04:20Z |
 | report_date | 2026-10-02 (America/Monterrey) / 2026-10-03 UTC |
 | baseline_in | `staging@a9ef303` (audited) + untracked T41 WIP |
 | baseline_out | `staging` = `origin/staging` (this report's commit, see `git log -1 origin/staging`); last integrated code/docs commit before the report: `59f6bc2`; `origin/wip/t41-closure-partial@b34aa74`; `main`/`origin/main@bdd1198` (placeholder, untouched) |
@@ -93,7 +95,7 @@ Open (none critical or high):
 | P1-F-08 | info | — | Vercel Authentication also protects the branch-bound staging domain; the owner views after Vercel login, machines use the automation bypass |
 | P1-F-10 | low | SalvaOps | `salvaops git push --branch` captures the current HEAD, not the named branch |
 | P1-F-11 | low | owner | the Production deployment predates `APP_ENV=production` (health reports `staging`); redeploy deferred by the production guard |
-| P1-F-13 | low | owner | the orchestrator's GitHub token lacks the Workflows permission; the publication used the owner's authenticated `gh` CLI session, which has it. Future workflow edits need one of the two |
+| P1-F-13 | closed | owner | RESOLVED 2026-10-03: the orchestrator's GitHub token now carries the Workflows permission (`GITHUB_AUTH=VERIFIED`, `GITHUB_WORKFLOWS_PERMISSION=VERIFIED` by a real push of a workflow change to a throwaway branch, deleted immediately) |
 | AUD-033 | low | frontend (Phase 2) | anonymous `/cuenta` streams 200 under `loading.tsx` before redirecting |
 
 ## 6. Owner decisions and the remaining blocker
@@ -123,3 +125,9 @@ Review at **https://staging.runiismty.com** (log in to Vercel with the team acco
 4. Not in this phase: inscription (`/inscripcion/*`), admin and scanner return 404 by design.
 
 Decide `APPROVE` or `REQUEST_CHANGES`.
+
+### Owner Human Gate result (2026-10-03)
+
+`OWNER_DECISION=APPROVE` · `OWNER_REVIEW_RESULT=PASS` · `OWNER_REVIEW_DATE=2026-10-03`.
+
+The owner reviewed https://staging.runiismty.com manually and confirmed: the Phase 1 pages that should exist render correctly; future-phase routes return the expected unavailable/404 state; email OTP sign-in and Google sign-in work; onboarding and the current account areas work; the result matches the planned Phase 1 baseline; no Phase 1 change is requested. The deferred production cutover is not a Phase 1 implementation failure and does not block Phase 2 work on staging.
