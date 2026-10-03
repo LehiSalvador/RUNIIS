@@ -13,8 +13,8 @@ if (e2e.remote && !process.env.PW_E2E_BANNER_PRINTED) {
  * Playwright config. LOCAL (default): reuses the shared local dev server on port 3100 (other agents
  * run concurrently against the same server; it is started only if nobody else did). REMOTE
  * (E2E_BASE_URL set, see tests/e2e/support/env.ts and tests/e2e/README.md): no dev server, the Vercel
- * automation-bypass header (E2E_VERCEL_BYPASS) is sent on every request through extraHTTPHeaders and
- * stripped from third-party origins by the fixtures in tests/e2e/support/fixtures.ts, and traces and
+ * automation-bypass header (E2E_VERCEL_BYPASS) and x-vercel-skip-toolbar are sent on every request through
+ * extraHTTPHeaders and stripped from third-party origins by the fixtures in tests/e2e/support/fixtures.ts, and traces and
  * videos stay off so the secret can never land in an artifact. Three projects cover the
  * desktop/mobile/tablet matrix.
  */
@@ -27,7 +27,7 @@ export default defineConfig({
   reporter: [["list"], ["html", { open: "never", outputFolder: "playwright-report" }]],
   use: {
     baseURL: e2e.baseURL,
-    extraHTTPHeaders: e2e.bypassHeaders,
+    extraHTTPHeaders: e2e.extraHeaders,
     trace: e2e.remote ? "off" : "retain-on-failure",
     video: "off",
     screenshot: "only-on-failure",

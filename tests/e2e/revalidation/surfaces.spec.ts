@@ -1,4 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
+import { settleNetwork } from "../support/settle";
 import AxeBuilder from "@axe-core/playwright";
 import type { Page, TestInfo } from "@playwright/test";
 import { createReadyUser, signInViaApi, uniqueEmail } from "../support/account";
@@ -67,7 +68,7 @@ test.describe("public surfaces", () => {
     await stubMapTiles(page, "ok");
     const response = await page.goto(`/eventos/${slug}`);
     expect(response?.status()).toBe(200);
-    await page.waitForLoadState("networkidle");
+    await settleNetwork(page);
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute("href", new RegExp(`/eventos/${slug}$`));
     const ld = (await page.locator('script[type="application/ld+json"]').allTextContents()).map((text) => JSON.parse(text) as Record<string, unknown>);
@@ -102,7 +103,7 @@ test.describe("signed-in surfaces", () => {
       await test.step(path, async () => {
         const response = await page.goto(path);
         expect(response?.status(), `${path} status`).toBe(200);
-        await page.waitForLoadState("networkidle");
+        await settleNetwork(page);
         await sweep(page, testInfo, key, { expectH1: h1 });
       });
     }

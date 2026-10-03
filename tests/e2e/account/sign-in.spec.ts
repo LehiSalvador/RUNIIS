@@ -1,4 +1,5 @@
 import { birthDateForAge, fetchOtpCode, resetAuthIpBuckets, uniqueEmail, usesAdminOtp } from "../support/account";
+import { settleNetwork } from "../support/settle";
 import { e2eEnv } from "../support/env";
 import { expect, gotoAndSettle, test, unexpectedConsoleErrors } from "./support";
 
@@ -76,7 +77,7 @@ test("OTP sign-in: invalid email, wrong code, resend cooldown, then adult onboar
   await page.getByLabel("Código de 6 dígitos").fill(code);
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page).toHaveURL(/\/onboarding\?next=%2Fcuenta%2Fpases/);
-  await page.waitForLoadState("networkidle");
+  await settleNetwork(page);
   await expect(page.getByRole("heading", { level: 1, name: "Completa tu perfil" })).toBeVisible();
   await a11y();
 
@@ -105,7 +106,7 @@ test("onboarding: 15-17 is admitted as a minor, under 15 is stopped", async ({ p
   await page.getByLabel("Código de 6 dígitos").fill(await fetchOtpCode(email));
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page).toHaveURL(/\/onboarding/);
-  await page.waitForLoadState("networkidle");
+  await settleNetwork(page);
 
   await page.locator("#onboarding-date_of_birth").fill(toDisplay(birthDateForAge(12)));
   await expect(page.getByText("RUNIIS requiere tener al menos 15 años")).toBeVisible();

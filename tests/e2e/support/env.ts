@@ -26,6 +26,8 @@ export type E2eEnv = {
   baseURL: string;
   /** Header map for extraHTTPHeaders, or undefined when no bypass secret was provided. */
   bypassHeaders: Record<string, string> | undefined;
+  /** Every header the config adds to same-origin requests (bypass + skip-toolbar); undefined locally. */
+  extraHeaders: Record<string, string> | undefined;
   hasBypass: boolean;
   /** Local Docker DB (psql / scripts/db.mjs) is reachable: true for local runs and loopback targets. */
   localDb: boolean;
@@ -39,6 +41,8 @@ export type E2eEnv = {
 
 export const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:3100";
 export const BYPASS_HEADER = "x-vercel-protection-bypass";
+/** Documented by Vercel for automated tests: keeps the Preview Toolbar (a vercel.live iframe the app CSP rightly blocks) out of the page. */
+export const SKIP_TOOLBAR_HEADER = "x-vercel-skip-toolbar";
 const DEFAULT_FIXTURE_LOG_DIR = ".salvaops-agent-evidence/P2-A-e2e-harness-revalidation";
 
 export class E2eConfigError extends Error {}
@@ -99,6 +103,7 @@ export function resolveE2eEnv(env: Record<string, string | undefined> = process.
     remote,
     baseURL,
     bypassHeaders: bypass !== undefined ? { [BYPASS_HEADER]: bypass } : undefined,
+    extraHeaders: remote ? { [SKIP_TOOLBAR_HEADER]: "1", ...(bypass !== undefined ? { [BYPASS_HEADER]: bypass } : {}) } : undefined,
     hasBypass: bypass !== undefined,
     localDb: !remote || loopback,
     adminOtp: supabaseUrl !== undefined && serverKey !== undefined ? { url: supabaseUrl, key: serverKey } : null,

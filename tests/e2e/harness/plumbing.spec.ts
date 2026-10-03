@@ -6,7 +6,7 @@ import { protectBypass } from "../support/bypass";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { BYPASS_HEADER, describeE2eEnv, E2eConfigError, e2eEnv, resetE2eEnvCache, resolveE2eEnv } from "../support/env";
+import { BYPASS_HEADER, SKIP_TOOLBAR_HEADER, describeE2eEnv, E2eConfigError, e2eEnv, resetE2eEnvCache, resolveE2eEnv } from "../support/env";
 import { adminOtpFor, fixtureEmailFor, resetAdminClientCache } from "../support/remote-auth";
 
 // Harness self-test (P2-A): proves the local/remote env plumbing without any real secret and without
@@ -25,7 +25,7 @@ const SYNTHETIC_SERVER_KEY = ["synthetic", "server", randomBytes(8).toString("he
 test.describe("env resolution", () => {
   test("no variables: local mode keeps today's behaviour", () => {
     const e2e = resolveE2eEnv({});
-    expect(e2e).toMatchObject({ remote: false, baseURL: "http://127.0.0.1:3100", bypassHeaders: undefined, localDb: true, adminOtp: null });
+    expect(e2e).toMatchObject({ remote: false, baseURL: "http://127.0.0.1:3100", bypassHeaders: undefined, extraHeaders: undefined, localDb: true, adminOtp: null });
     expect(e2e.workers).toBeUndefined();
   });
 
@@ -40,8 +40,13 @@ test.describe("env resolution", () => {
     });
     expect(e2e).toMatchObject({ remote: true, baseURL: "https://staging.example.test", localDb: false, runId: "run42", eventSlug: "qa-open-5k", workers: 2 });
     expect(e2e.bypassHeaders).toEqual({ [BYPASS_HEADER]: SYNTHETIC_SECRET });
+    expect(e2e.extraHeaders).toEqual({ [SKIP_TOOLBAR_HEADER]: "1", [BYPASS_HEADER]: SYNTHETIC_SECRET });
     expect(e2e.adminOtp).toEqual({ url: "https://project.supabase.example.test", key: SYNTHETIC_SERVER_KEY });
     expect(e2e.fixtureLog).toContain("fixtures-run42.ndjson");
+  });
+
+  test("remote without a bypass secret still asks Vercel to skip the toolbar", () => {
+    expect(resolveE2eEnv({ E2E_BASE_URL: "https://staging.example.test" }).extraHeaders).toEqual({ [SKIP_TOOLBAR_HEADER]: "1" });
   });
 
   test("a loopback target keeps the local DB available (rehearsal of remote mode)", () => {
@@ -105,7 +110,7 @@ test.describe("bypass header scope", () => {
   test("the header reaches the target origin (page and API) and never a third-party origin", async ({ browser }) => {
     const third = await listen("third-party");
     const target = await listen(`<!doctype html><title>t</title><script>fetch(${JSON.stringify(`${third}/asset`)}).catch(() => {});</script>`);
-    const context = await browser.newContext({ baseURL: target, extraHTTPHeaders: { [BYPASS_HEADER]: SYNTHETIC_SECRET } });
+    const context = await browser.newContext({ baseURL: target, extraHTTPHeaders: { [BYPASS_HEADER]: SYNTHETIC_SECRET, [SKIP_TOOLBAR_HEADER]: "1" } });
     await protectBypass(context, target, true);
     const page = await context.newPage();
     await page.goto("/page");
@@ -118,9 +123,15 @@ test.describe("bypass header scope", () => {
     const toTarget = seen.filter((entry) => entry.host === targetHost);
     const toThird = seen.filter((entry) => entry.host === thirdHost);
     expect(toTarget.length).toBeGreaterThanOrEqual(2);
-    for (const entry of toTarget) expect(entry.headers[BYPASS_HEADER]).toBe(SYNTHETIC_SECRET);
+    for (const entry of toTarget) {
+      expect(entry.headers[BYPASS_HEADER]).toBe(SYNTHETIC_SECRET);
+      expect(entry.headers[SKIP_TOOLBAR_HEADER]).toBe("1");
+    }
     expect(toThird.length).toBeGreaterThanOrEqual(1);
-    for (const entry of toThird) expect(entry.headers[BYPASS_HEADER]).toBeUndefined();
+    for (const entry of toThird) {
+      expect(entry.headers[BYPASS_HEADER]).toBeUndefined();
+      expect(entry.headers[SKIP_TOOLBAR_HEADER]).toBeUndefined();
+    }
     await context.close();
   });
 

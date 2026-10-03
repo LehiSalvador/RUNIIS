@@ -1,4 +1,5 @@
 import { expect, focusRingVisible, test } from "../support/fixtures";
+import { settleNetwork } from "../support/settle";
 import { scanForSeriousViolations } from "../support/axe";
 
 const PAGES = [
@@ -15,7 +16,7 @@ test.describe("foundation pages", () => {
       const response = await page.goto(path);
       expect(response?.status()).toBe(200);
       await expect(page.locator("h1").first()).toBeAttached();
-      await page.waitForLoadState("networkidle");
+      await settleNetwork(page);
 
       const { scrollWidth, clientWidth } = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
@@ -39,7 +40,7 @@ test.describe("foundation pages", () => {
 test.describe("design-system components", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/design-system");
-    await page.waitForLoadState("networkidle");
+    await settleNetwork(page);
   });
 
   test("keyboard: Tab moves through controls in order and every stop shows the focus ring", async ({ page }) => {

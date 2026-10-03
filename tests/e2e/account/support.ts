@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { settleNetwork } from "../support/settle";
 import type { Page, TestInfo } from "@playwright/test";
 import { scanForSeriousViolations } from "../support/axe";
 import { expect as baseExpect, test as base } from "../support/fixtures";
@@ -29,7 +30,7 @@ export const test = base.extend<{ evidence: (name: string) => Promise<void>; a11
 
 export async function gotoAndSettle(page: Page, path: string) {
   await page.goto(path);
-  await page.waitForLoadState("networkidle");
+  await settleNetwork(page);
 }
 
 /**
