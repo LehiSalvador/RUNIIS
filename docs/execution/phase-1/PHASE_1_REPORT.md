@@ -1,126 +1,125 @@
 # RUNIIS WEB — Phase 1 Report
 
-No secret values appear in this report. Variables are named, never valued.
+No secret values appear in this report. Variables are named, never valued. This is the single authoritative Phase 1 state; it supersedes every earlier revision of this file.
 
 | Field | Value |
 | --- | --- |
 | phase_id | `P1-PLATFORM-REBASE` |
 | phase_name | Platform Rebase, Vercel Migration & Authoritative Baseline |
-| status | `TECHNICAL_PASS_WITH_OWNER_BLOCKER` (not `PHASE_APPROVED`: only the owner approves) |
+| status | `TECHNICAL_PASS_WITH_OWNER_BLOCKER` — the only open owner item is the production cutover, which is out of this close; not `PHASE_APPROVED` (only the owner approves) |
 | report_date | 2026-10-02 (America/Monterrey) / 2026-10-03 UTC |
 | baseline_in | `staging@a9ef303` (audited) + untracked T41 WIP |
-| baseline_out | local `staging@fb24ec8` (integrated code/docs; report commits follow); `origin/staging@466d980`; `origin/wip/t41-closure-partial@b34aa74`; `main`/`origin/main@bdd1198` (placeholder, untouched) |
-| review URL | https://staging.runiismty.com (sign in to Vercel with the team account; see Owner Human Gate) |
+| baseline_out | `staging` = `origin/staging` (this report's commit, see `git log -1 origin/staging`); last integrated code/docs commit before the report: `59f6bc2`; `origin/wip/t41-closure-partial@b34aa74`; `main`/`origin/main@bdd1198` (placeholder, untouched) |
+| review URL | https://staging.runiismty.com (sign in to Vercel with the team account when prompted) |
 
 ## 1. Observable outcome
 
-- The real RUNIIS V1 build (not the placeholder) runs on Vercel Preview at `staging.runiismty.com`, backed by the non-production Supabase project `brxdgvcfykmsqmhsvgxl`.
-- `/api/health` reports `staging`; every page carries `noindex` and `robots.txt` disallows all; the public CSP, the nonce CSP for private pages, HSTS and other security headers are served by the real host.
-- Sign-in with email OTP works end to end on staging (6-digit code, Secure/HttpOnly session cookie, onboarding reachable). Google sign-in redirects through the staging Supabase with the staging OAuth client.
-- Anonymous rate limits key on the real client IP behind Vercel; forged forwarding headers do not create new buckets.
-- The four HTTP workers run on Supabase `pg_cron` + `pg_net` against Vercel and record `infra.worker_run`; Netlify Scheduled Functions are gone from the code.
-- GPX import fits the measured Vercel request-body limit.
-- Netlify remains only as legacy placeholder and rollback for `runiismty.com`.
+- The real RUNIIS V1 build runs on Vercel Preview at `staging.runiismty.com`, backed by the non-production Supabase project `brxdgvcfykmsqmhsvgxl`. It is no longer the placeholder.
+- All Phase 1 work is published: local `staging` equals `origin/staging`; GitHub Actions CI runs on every push and passed on its first run.
+- `/api/health` reports `staging`; every page is `noindex` and `robots.txt` disallows all; public and nonce CSP, HSTS and the other security headers are served by the real host.
+- Email OTP sign-in works end to end on staging (6 digits, Secure/HttpOnly cookie, onboarding reachable); Google sign-in uses the staging OAuth client.
+- Anonymous rate limits key on the real client IP behind Vercel; forged forwarding headers do not create buckets.
+- The HTTP workers run on Supabase `pg_cron` + `pg_net` against Vercel and record `infra.worker_run`; Netlify scheduling is gone from the code.
+- GPX import fits the measured Vercel request-body limit (4.5 MB).
+- Netlify remains only as the legacy placeholder and rollback for `runiismty.com`.
 
 ## 2. Work Units
 
 | WU | Owner | Result | Commits / evidence |
 | --- | --- | --- | --- |
-| WU-P1-A baseline | orchestrator | COMPLETE | `afcf1cf` (audits + Roadmap versioned), T41 isolated on `wip/t41-closure-partial@b34aa74` (7 hashes verified), offline bundle in owner OneDrive, gitleaks history clean |
-| WU-P1-C runtime compatibility | salvaops-backend | PASS | `621c1ce`, `7065f43` — portable client IP, truthful health, noindex outside production, GPX limits, `.env.example` |
-| WU-P1-D worker scheduler | salvaops-database | PASS (worker_run gap routed to F) | `a987977`, `c53c431` — pg_cron + pg_net + Vault triggers; Netlify functions/plugin/config removed |
-| WU-P1-B authority docs | salvaops-web-architect | PASS | `e17dc16`, `0b03932`, `73e0944`, `9b39693` (+ orchestrator `f72a132` master frontmatter) — Master patches (audit 9.1-9.12), ADR-002, ADR-001 supersession notes, specs T11-T13, authority map, runbooks |
-| WU-P1-F CI + worker runs | salvaops-backend | PASS | `f58634a`, `11daa37`, `0886e6c`, `4959056`, `466d980`, `410bc07`, `aed5a27` — infra.worker_run recording, GPX contract cap, GitHub Actions CI, gitleaks allowlists |
-| WU-P1-D2 bypass header | salvaops-database | PASS | `79b77b9` — optional `x-vercel-protection-bypass` header from Vault on worker triggers |
-| WU-P1-D3 pg_net privileges | salvaops-database | BLOCKED → risk accepted | net objects are owned by `supabase_admin`; project roles cannot revoke. Compensating control verified; runbook assertion `fb24ec8` |
-| WU-P1-E provider operations | orchestrator | REMOTE_INTEGRATED | `.local-state/phase-1/provider-ops.log` (secret-free) |
+| WU-P1-A baseline | orchestrator | COMPLETE | `afcf1cf` (audits + Roadmap versioned); T41 isolated on `wip/t41-closure-partial@b34aa74` (hashes verified, published, unmerged); offline Git bundle kept by the owner |
+| WU-P1-C runtime compatibility | salvaops-backend | PASS | `621c1ce`, `7065f43` |
+| WU-P1-D worker scheduler | salvaops-database | PASS (worker_run gap remediated in F) | `a987977`, `c53c431` |
+| WU-P1-B authority docs | salvaops-web-architect | PASS | `e17dc16`, `0b03932`, `73e0944`, `9b39693` (+ `f72a132`) |
+| WU-P1-F CI + worker runs | salvaops-backend | PASS | `f58634a`, `11daa37`, `0886e6c`, `4959056`, `466d980`, `410bc07`, `aed5a27` |
+| WU-P1-D2 bypass header | salvaops-database | PASS | `79b77b9` |
+| WU-P1-D3 pg_net privileges | salvaops-database | BLOCKED → risk accepted | net objects owned by `supabase_admin`; runbook assertion `fb24ec8` |
+| WU-P1-E provider operations | orchestrator | COMPLETE | `.local-state/phase-1/provider-ops.log` (secret-free) |
 | WU-P1-H1 QA gate | salvaops-qa | PASS | Tier 2 on `79b77b9`; all assigned acceptance IDs PASS |
-| WU-P1-H2 AppSec gate | salvaops-appsec | FAIL only on H2-01 (owner action) | platform verdicts AC-09/11/12/18 PASS_WITH_FINDINGS |
-| WU-P1-H3 Integration & Evidence | salvaops-integration-evidence | READY | `.salvaops-agent-evidence/WU-P1-H3-integration-evidence/reconciliation.md` (rev 2) |
-| WU-P1-G cutover | orchestrator | DEFERRED | see section 7 |
+| WU-P1-H2 AppSec gate | salvaops-appsec | PASS_WITH_FINDINGS | revision 3 on `59f6bc2`; no open critical/high |
+| WU-P1-H3 Integration & Evidence | salvaops-integration-evidence | re-run on this report's commit | `.salvaops-agent-evidence/WU-P1-H3-integration-evidence/reconciliation.md` |
+| WU-P1-G cutover | orchestrator | DEFERRED | section 6 |
 
-Agents used: salvaops-backend ×2, salvaops-database ×3, salvaops-web-architect, salvaops-qa, salvaops-appsec, salvaops-integration-evidence. Maximum two concurrent model actors.
+Agents used: salvaops-backend ×2, salvaops-database ×3, salvaops-web-architect, salvaops-qa, salvaops-appsec, salvaops-integration-evidence; at most two concurrent model actors.
 
-## 3. Provider and infrastructure changes
+## 3. Provider and infrastructure state
 
-| Provider | Change | Rollback |
+| Provider | State | Rollback |
 | --- | --- | --- |
-| GitHub | Ruleset `24351949` (deletion + non-fast-forward blocked on `main`, `staging`, `wip/t41-closure-partial`). Published `wip/t41-closure-partial@b34aa74` (via SalvaOps) and `staging@466d980` (fast-forward). Repository stays public (OWN-03). | Delete ruleset; refs are additive |
-| Vercel `runiis-web` | 24 shared env entries narrowed to Production; `APP_ENV=production` added; Production `APP_BASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `INTERNAL_CRON_SECRET`, `PASS_CREDENTIAL_ENCRYPTION_KEY_V1` set from owner source. Preview: staging-only values for all server variables, `EMAIL_DELIVERY_MODE=capture`; branch `staging`: `allowlist` + owner address + Brevo. Domains: apex primary, `www → apex 308`, `staging.runiismty.com` bound to branch `staging`. Protection Bypass for Automation created (secret only in staging Vault). | Env/domain snapshot in checkpoint; revoke bypass in project settings |
-| Supabase staging `brxdgvcfykmsqmhsvgxl` | 68/68 migrations (no T41, no seed); Auth site URL `https://staging.runiismty.com`, redirect allowlist for staging and team preview URLs, OTP 6 digits / 600 s, `before_user_created` hook on; Vault: worker base URL, worker cron secret, Vercel bypass. QA fixture user `qa.phase1.gate@example.com` retained (non-production). | Pre-migration schema dump `.local-state/phase-1/staging-schema-before.sql`; auth snapshot `.local-state/phase-1/auth-config-before.jsonl` |
-| Supabase production `mdzhsoeqagtwznybwtuy` | Auth only (2026-10-02, before the production guard): OTP 6/600 s, allowlist `https://runiismty.com/**`. No schema change. | Auth snapshot above |
-| Brevo | None (read-only: free plan, 300/day, domain authenticated, Authorized-IP blocking disabled for API and SMTP) | — |
-| Netlify | None. Placeholder production deploy, env and domain kept as rollback. | — |
-| DNS | None. `runiismty.com` and `www` still resolve to Netlify. | — |
+| GitHub | Public repository (OWN-03). Ruleset `24351949` active on `main`, `staging`, `wip/t41-closure-partial` (deletion and non-fast-forward blocked, no bypass). `origin/staging` fast-forwarded `89b79d4 → 466d980 → 59f6bc2` and then this report; no force push, no history rewrite. | Delete ruleset; refs are additive |
+| GitHub Actions | Workflow `CI` (`.github/workflows/ci.yml`); first run `37093761807` on `59f6bc2` = **success**: Lint, Typecheck, Unit tests, pgTAP (34 files / 1049 tests), Integration (Supabase local + dev server), Build, Secret scan (gitleaks). Read-only token, no repository secrets. | — |
+| Vercel `runiis-web` | Production = `main@bdd1198` placeholder (unchanged). Preview `staging` = `59f6bc2` deployment `dpl_3o1sf99PBFsgupt6Bp5NDLzge46z` READY, aliased to `staging.runiismty.com`. Env: 24 legacy entries scoped to Production; Production `APP_ENV`, `APP_BASE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `INTERNAL_CRON_SECRET`, `PASS_CREDENTIAL_ENCRYPTION_KEY_V1` from the owner source; Preview holds staging-only values for every server variable with `EMAIL_DELIVERY_MODE=capture`; branch `staging` adds `allowlist` (owner address) and Brevo. Domains: apex primary, `www → apex 308`, `staging.runiismty.com` bound to branch `staging`. Vercel Authentication on Preview; Protection Bypass for Automation (secret only in the staging Vault). | Revoke bypass; env/domain snapshot in the checkpoint |
+| Supabase staging `brxdgvcfykmsqmhsvgxl` | 68/68 migrations (last `20261002100000`; no T41, no seed, no production data); 82 `app` tables with RLS; Auth site URL staging, OTP 6 digits / 600 s, `before_user_created` hook on; Vault: worker base URL, worker cron secret, Vercel bypass; 7 cron jobs active. QA fixture user retained (non-production). | Pre-migration schema dump and auth snapshot in `.local-state/phase-1/` |
+| Supabase production `mdzhsoeqagtwznybwtuy` | No schema change. Auth OTP 6/600 s and allowlist `https://runiismty.com/**` (set 2026-10-02 before the guard). `ALLOW_PRODUCTION_MUTATIONS=false` respected since. | Auth snapshot |
+| Supabase access token | `SUPABASE_PAT_CURRENT = VERIFIED` (authenticates; production project only; staging work uses the staging DB credential and staging secret key). `SUPABASE_PAT_PREVIOUS = REVOKED_BY_OWNER` (former full-access token now 401). | — |
+| Brevo | Unchanged; free plan; domain authenticated; Authorized-IP blocking disabled for API and SMTP. | — |
+| Netlify | Unchanged; production placeholder, env and domain kept as rollback; no Netlify architecture in the code. | — |
+| DNS | Unchanged; `runiismty.com` and `www` resolve to Netlify. | — |
+
+Secrets: the only authorized sources are the orchestrator's private file and the agents' provider file; all earlier credential files are retired. No value is recorded in Git, docs, evidence, checkpoint or logs (gitleaks all refs + tree: no leaks; value scan of the tracked tree, docs and evidence: 0 hits).
 
 ## 4. Tests and remote verification
 
-Tier 2 (QA, local, commit `79b77b9`): `pnpm install --frozen-lockfile`, lint, typecheck, unit 510/510, pgTAP 1049/1049 (34 files), integration 62/62, build, gitleaks history (69 commits) — all PASS. Since then only D2 (pgTAP 702 added, run by its owner: 34 files / 1049 PASS) and docs commits landed; D3 changed nothing.
-
-Remote probes (orchestrator, staging, evidence `.salvaops-agent-evidence/P1-GATE/gate-probes.log`):
+- Local Tier 2 (QA, `79b77b9`): install frozen, lint, typecheck, unit 510/510, pgTAP 1049/1049, integration 62/62, build, gitleaks — PASS. Later commits are docs/CI only plus migration `20261002100000`, whose pgTAP 702 is included in the 1049 and in CI.
+- Remote CI (GitHub, `59f6bc2`): all 7 jobs success (section 3).
+- Remote probes (orchestrator; `.salvaops-agent-evidence/P1-GATE/gate-probes.log`):
 
 | Check | Result |
 | --- | --- |
-| Routes `/`, `/eventos`, `/entrar`, `/cuenta`, `/runiis`, `/contacto`, `/legal/*`, sitemap | 200, real RUNIIS pages; future routes `/inscripcion`, `/admin`, `/scanner` → controlled 404 |
+| Deployment | `staging.runiismty.com` → `dpl_3o1sf99…` READY for `59f6bc2` |
+| Routes | `/`, `/eventos`, `/entrar`, `/cuenta`, `/runiis`, `/contacto`, `/legal/*`, sitemap → 200 real pages; `/inscripcion`, `/admin`, `/scanner` → controlled 404 (future phases) |
 | Health / indexing | `{"environment":"staging"}`; `X-Robots-Tag: noindex, nofollow`; `robots.txt` = `Disallow: /` |
-| Headers | public CSP on cached pages; nonce + `strict-dynamic` CSP on private pages; HSTS preload; nosniff; `X-Frame-Options: DENY`; `no-referrer` on `/auth/callback`; `camera=(self)` only on `/scanner` |
-| Auth OTP | admin-generated 6-digit code → 200 with Secure/HttpOnly/SameSite cookie → session authenticated → `/onboarding` |
-| Google OAuth | app → staging Supabase authorize → Google with the staging client ID; no `redirect_uri_mismatch` |
-| Client IP / rate limit | 11th wrong code → 429; forged XFF/X-Real-IP/x-vercel-forwarded-for → still 429; same email from Supabase egress → 400 (separate bucket) |
-| GPX body limit | 4.33 MB and 4.45 MB reach the app; 4.6 MB and 7.5 MB → platform 413 `FUNCTION_PAYLOAD_TOO_LARGE` |
-| Workers | pg_cron → pg_net → Vercel: all 4 HTTP workers plus the 5-minute DB workers (`close-registration-windows`, `expire-registration-requests`) `SUCCEEDED` in `infra.worker_run` (daily `archive-guests` not yet due in the observed window), 0 stale RUNNING; wrong/absent Bearer → 401, no run |
-| Exposure | without credentials staging and worker routes return Vercel SSO 302; PostgREST rejects `net`, `vault`, `app`, `private`, `cron` (406); GraphQL disabled |
+| Headers | public CSP on cached pages; nonce + `strict-dynamic` on private pages; HSTS preload; nosniff; `DENY`; `no-referrer` on `/auth/callback`; `camera=(self)` only on `/scanner` |
+| Auth | 6-digit OTP → 200 with Secure/HttpOnly/SameSite session → authenticated session → `/onboarding`; Google redirect chain uses the staging client, no `redirect_uri_mismatch` |
+| Client IP / rate limit | 11th wrong code → 429; forged XFF/X-Real-IP/x-vercel-forwarded-for → 429; same email from Supabase egress → 400 (separate bucket) |
+| GPX | 4.33 MB and 4.45 MB reach the app; 4.6 MB and 7.5 MB → platform 413 `FUNCTION_PAYLOAD_TOO_LARGE` |
+| Workers | pg_cron → pg_net → Vercel: the four HTTP workers and the 5-minute DB workers `SUCCEEDED` in `infra.worker_run`, again after the `59f6bc2` redeploy; 0 stale RUNNING; wrong/absent Bearer → 401 without a run |
+| Exposure | without credentials, staging and worker routes return the Vercel SSO redirect; PostgREST rejects `net`, `vault`, `app`, `private`, `cron` (406); GraphQL disabled |
 | Email safety | branch `staging` `allowlist`; other previews `capture`; Production has no mode → refuses to send |
-| Secrets | gitleaks history/tree clean; value scan of tracked tree, docs and evidence: 0 hits |
 
-Not run: GitHub Actions CI (blocked, section 6), E2E (out of Phase 1 gate scope; Phase 2 revalidates journeys on Vercel), real email delivery.
+Not run: E2E (out of the Phase 1 gate; Phase 2 revalidates the participant journeys on Vercel), real email delivery.
 
 ## 5. Findings
 
-Closed in Phase 1: AUD-002 (scheduler), AUD-003 (single copy: code published), AUD-004 (client IP), AUD-005 (env separation), AUD-010 (apex/www direction in Vercel), AUD-014 (authority/SalvaOps index), AUD-015 (GPX limit, measured), AUD-021 (preview env no longer carries production values), AUD-023 (redirect allowlists), AUD-025 (specs/decisions versioned), AUD-028 (health), AUD-030 (`.env.example`), AUD-038; P1-F-01 remote OTP 8 → 6 digits; P1-F-05 HTTP workers now record `infra.worker_run`; Brevo authorized-IP blocking verified disabled.
+Closed: AUD-002, AUD-003, AUD-004, AUD-005, AUD-010, AUD-014, AUD-015, AUD-016 (CI runs and passes), AUD-021, AUD-023, AUD-025, AUD-028, AUD-030, AUD-038; P1-F-01 (remote OTP 8 → 6), P1-F-05 (HTTP workers record `infra.worker_run`); SEC-INC-01 / H2-01 (exposed Supabase PAT replaced; previous tokens revoked by the owner); H2-02, H2-10; staging publication and CI publication.
 
-Open:
+Open (none critical or high):
 
 | ID | Severity | Owner | Summary |
 | --- | --- | --- | --- |
-| H2-01 / SEC-INC-01 | critical | owner | The exposed Supabase PAT is identified as the value of `SUPABASE_ACCESS_TOKEN_CURRENT_LIMITED` (the orchestrator no longer uses it). It must be revoked in the Supabase dashboard. Not needed by any runtime; not tracked; does not block staging. |
-| CI-RUN / AUD-016 | high (gate item) | owner | The GitHub PATs lack the `workflow` scope, so the local commits after `466d980` that include `.github/workflows/ci.yml` (and the Master, ADR-002, specs, runbooks) cannot be pushed and CI has never run on GitHub. |
-| H2-12 | low (accepted) | orchestrator | pg_net default grants for anon/authenticated cannot be revoked by project roles; accepted with the verified compensating control and the runbook assertion. |
-| H2-03, H2-04, H2-05, H2-06, H2-07, H2-08, H2-09, H2-11 | low/info | various | Bypass secret is project-wide (rotate on need); staging Brevo key comes from the single Brevo account; worker base URL accepts http/any host (Vault write required); staging redirect wildcard covers the team's preview URLs; remote Auth abuse controls not evidenced; CI actions pinned to major tags; client-IP residuals (Netlify header off Vercel, IPv6 /64); QA fixture user retained. Triage before Phase 5. |
-| P1-F-08 | info | — | Vercel Authentication also protects the branch-bound staging custom domain (the audit assumed exempt). Owner views after Vercel login; machines use the automation bypass. |
-| P1-F-10 | low | SalvaOps | `salvaops git push --branch` captures the current HEAD, not the named branch; one wrong-commit request was approved but never executed. |
-| P1-F-11 | low | owner | The Production deployment predates `APP_ENV=production` (health reports `staging`); a redeploy is deferred under `ALLOW_PRODUCTION_MUTATIONS=false`. |
-| AUD-033 | low | frontend (Phase 2) | Anonymous `/cuenta` streams 200 under `loading.tsx` before redirecting. |
+| H2-12 | low (accepted) | orchestrator / salvaops-database | pg_net default grants for anon/authenticated cannot be revoked by project roles; accepted with the verified compensating control (schemas not exposed, GraphQL off) and the runbook assertion |
+| H2-03..H2-09 | low | various | project-wide bypass secret (rotate on need); staging Brevo key from the single Brevo account; worker base URL accepts http/any host (needs Vault write); staging redirect wildcard covers the team's preview URLs; remote Auth abuse controls not evidenced; CI actions pinned to major tags; client-IP residuals (Netlify header off Vercel, IPv6 /64). Triage before Phase 5 |
+| H2-11 | info | orchestrator | QA fixture user in staging; no `worker_run` retention; ALTCHA key shares the cron secret; generic previews share the staging service key |
+| P1-F-08 | info | — | Vercel Authentication also protects the branch-bound staging domain; the owner views after Vercel login, machines use the automation bypass |
+| P1-F-10 | low | SalvaOps | `salvaops git push --branch` captures the current HEAD, not the named branch |
+| P1-F-11 | low | owner | the Production deployment predates `APP_ENV=production` (health reports `staging`); redeploy deferred by the production guard |
+| P1-F-13 | low | owner | the orchestrator's GitHub token lacks the Workflows permission; the publication used the owner's authenticated `gh` CLI session, which has it. Future workflow edits need one of the two |
+| AUD-033 | low | frontend (Phase 2) | anonymous `/cuenta` streams 200 under `loading.tsx` before redirecting |
 
-## 6. Owner decisions and blockers
+## 6. Owner decisions and the remaining blocker
 
 | Item | State |
 | --- | --- |
-| OWN-03 | RESOLVED 2026-10-01: repository stays public and is published |
-| OWN-01 | Owner position: V1 processes no payment on the platform (WhatsApp quote only). Residual Vercel fair-use risk to re-confirm before the Phase 5 public opening of paid editions |
-| OWN-02 | Domain expires 2027-09-24 with `renew=false` (risk recorded, no action) |
-| Workflow scope | **Blocker** — grant `Workflows: Read and write` to the GitHub fine-grained PAT, then the orchestrator pushes and records the first CI run |
-| SEC-INC-01 | **Blocker (security)** — revoke the identified token |
-| Cutover | Deferred: production guard `ALLOW_PRODUCTION_MUTATIONS=false`, DNS write needs the owner, OWN-01 residual risk |
+| OWN-03 | RESOLVED: repository public and published |
+| OWN-01 | Owner position: V1 processes no payment on the platform (WhatsApp quote only); residual Vercel fair-use risk to re-confirm before the Phase 5 public opening of paid editions |
+| OWN-02 | Domain expires 2027-09-24 with `renew=false` (risk recorded) |
+| Production cutover | **Owner blocker, deferred and out of this close**: `ALLOW_PRODUCTION_MUTATIONS=false`, DNS write by the owner, OWN-01 residual risk. Runbook `docs/runbooks/vercel-cutover-and-rollback.md` is ready |
 
-## 7. Rollback, Netlify, Vercel, Supabase state
+## 7. Rollback
 
-- Rollback: nothing on `runiismty.com` changed; Netlify still serves production. Runbook `docs/runbooks/vercel-cutover-and-rollback.md` holds the DNS snapshot (`@ A 75.2.60.5`, `www CNAME runiis-web.netlify.app`) and the procedure for when the cutover is authorized.
-- Netlify: legacy placeholder + rollback only; no new Netlify architecture; code dependencies removed.
-- Vercel: Production = `main@bdd1198` placeholder; Preview `staging` = `466d980` READY on `staging.runiismty.com`.
-- Supabase: staging = V1 schema (68 migrations) and active workers; production = no V1 schema, Auth OTP/allowlist aligned, no mutation since the guard.
+Nothing on `runiismty.com` changed; Netlify still serves production with its deploy, env and domain intact. The cutover runbook holds the DNS snapshot and the reverse procedure. Staging changes are reversible from the snapshots listed in section 3.
 
 ## 8. Next-phase readiness
 
-Phase 2 can build on the Vercel platform as established. It is not started. Phase 2 prerequisites from the Roadmap: OWN-05 (Terms/Privacy acceptance) before its gate; revalidate F1/F2 journeys on Vercel (E2E), including AUD-033.
+Phase 2 can build on the Vercel platform as established; it was not started. Roadmap prerequisites: OWN-05 (Terms/Privacy acceptance) before its gate; revalidate F1/F2 journeys on Vercel with E2E, including AUD-033.
 
 ## 9. Owner Human Gate
 
 Review at **https://staging.runiismty.com** (log in to Vercel with the team account when prompted):
 
-1. Home, `/eventos`, an event page, `/runiis`, `/contacto`, `/legal/terminos` render real RUNIIS content (no events exist yet in staging, so lists may be empty).
-2. Sign in with your email (OTP arrives from Supabase/Brevo, 6 digits) or with Google; complete onboarding; open `/cuenta` and its sections (friends, guests, guardians, requests, passes).
-3. Confirm the staging-only behaviour you expect: noindex, email only to your allowlisted address.
-4. Not in this phase: inscription flow (`/inscripcion/*`), admin, scanner, rankings — they return 404 by design.
+1. Home, `/eventos`, an event page, `/runiis`, `/contacto` and `/legal/terminos` show real RUNIIS content (staging has no events yet, so lists may be empty).
+2. Sign in with your email (6-digit OTP) or Google; complete onboarding; open `/cuenta` and its sections.
+3. Expect staging-only behaviour: pages are not indexable; app email only reaches your allowlisted address.
+4. Not in this phase: inscription (`/inscripcion/*`), admin and scanner return 404 by design.
 
-Decide: `APPROVE` or `REQUEST_CHANGES`. Before or with approval: revoke the exposed Supabase PAT and grant the PAT workflow scope so CI can run.
+Decide `APPROVE` or `REQUEST_CHANGES`.
