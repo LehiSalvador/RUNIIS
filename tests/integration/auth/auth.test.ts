@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, describe, expect, test } from "vitest";
-import { APP_URL, cleanup, createCookieJar, createTestStaff, createTestUser, fetchOtpCode, httpSignIn, queryValue, sql } from "../helpers";
+import { APP_URL, cleanup, createCookieJar, createTestStaff, createTestUser, fetchOtpCode, httpSignIn, queryValue, sql, withLegalVersionIds } from "../helpers";
 
 // Drives the real Next.js route handlers over HTTP against the shared dev server (SEC-040/043/044/
 // 047/049; ADR-001 A7/A8), with real Mailpit OTP delivery and real HttpOnly session cookies -- no
@@ -67,7 +67,7 @@ describe("auth HTTP flow (T20) integration", () => {
     expect(meResponse.status).toBe(200);
     expect(((await meResponse.json()) as { data: { profile_readiness: string } }).data.profile_readiness).toBe("PROFILE_INCOMPLETE");
 
-    const onboardResponse = await post(jar, "/api/v1/me/onboarding", onboardingFields);
+    const onboardResponse = await post(jar, "/api/v1/me/onboarding", withLegalVersionIds(onboardingFields));
     expect(onboardResponse.status).toBe(200);
     expect(((await onboardResponse.json()) as { data: { profile_readiness: string } }).data.profile_readiness).toBe("READY");
 
@@ -137,12 +137,42 @@ describe("auth HTTP flow (T20) integration", () => {
     expect(bodies[1]).toEqual(bodies[2]);
   });
 
+  test("POST /api/v1/me/onboarding requires the legal ids and cannot rewrite identity once READY (H2P2-01, H2P2-05)", async () => {
+    const jar = createCookieJar();
+    const email = `t20-guard-${Date.now()}@example.test`;
+    const authUserId = await httpSignIn(jar, email);
+    createdUsers.push(authUserId);
+    const identity = () =>
+      queryValue(`select full_name || '|' || date_of_birth || '|' || sex_code from app.runner_profile where auth_user_id = '${authUserId}'`);
+
+    // H2P2-05: the ids are never implied.
+    const missing = await post(jar, "/api/v1/me/onboarding", onboardingFields);
+    expect(missing.status).toBe(400);
+    expect(((await missing.json()) as { error: { code: string } }).error.code).toBe("VALIDATION_ERROR");
+    expect(queryValue(`select profile_readiness from app.runner_profile where auth_user_id = '${authUserId}'`)).toBe("PROFILE_INCOMPLETE");
+
+    expect((await post(jar, "/api/v1/me/onboarding", withLegalVersionIds(onboardingFields))).status).toBe(200);
+    expect(identity()).toBe("Persona Integración|1990-05-05|F");
+
+    // H2P2-01: a READY profile keeps its name, date of birth and sex.
+    const rewrite = await post(
+      jar,
+      "/api/v1/me/onboarding",
+      withLegalVersionIds({ ...onboardingFields, full_name: "Otro Nombre", date_of_birth: "1980-01-01", sex_code: "M" as const }),
+    );
+    expect(rewrite.status).toBe(409);
+    const body = (await rewrite.json()) as { error: { code: string; details: { reason?: string } } };
+    expect(body.error.code).toBe("CONFLICT");
+    expect(body.error.details.reason).toBe("PROFILE_ALREADY_READY");
+    expect(identity()).toBe("Persona Integración|1990-05-05|F");
+  }, 60_000);
+
   test("PATCH /api/v1/me/profile: allowlisted fields succeed, everything else is rejected (mass-assignment, SEC-016)", async () => {
     const jar = createCookieJar();
     const email = `t20-patch-${Date.now()}@example.test`;
     const authUserId = await httpSignIn(jar, email);
     createdUsers.push(authUserId);
-    expect((await post(jar, "/api/v1/me/onboarding", onboardingFields)).status).toBe(200);
+    expect((await post(jar, "/api/v1/me/onboarding", withLegalVersionIds(onboardingFields))).status).toBe(200);
 
     const forbidden = await jar.fetch("/api/v1/me/profile", {
       method: "PATCH",

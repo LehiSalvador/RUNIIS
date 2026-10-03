@@ -4,7 +4,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public;
 
-select plan(54);
+select plan(56);
 
 create function pg_temp.err(p_sql text) returns jsonb language plpgsql as $$
 declare v_code text; v_detail text;
@@ -209,7 +209,7 @@ set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000420005"
 select is(pg_temp.err($$ select public.get_my_legal_status() $$) ->> 'code', 'ACCOUNT_BANNED', 'banned account: get_my_legal_status is ACCOUNT_BANNED');
 
 -- ---------------------------------------------------------------------------------------------
--- complete_onboarding: optional client-confirmed version ids (OWN-05).
+-- complete_onboarding: client-confirmed version ids (OWN-05); required since 163 (H2P2-05).
 -- ---------------------------------------------------------------------------------------------
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000420003", "role": "authenticated"}';
 select is(pg_temp.err($$ select public.complete_onboarding('Persona Tres', '1990-01-01', 'F', '+528110042301',
@@ -234,11 +234,16 @@ select is((select acceptance_context ->> 'client_confirmed' from app.legal_accep
              and legal_document_version_id = '69000000-0000-4000-8000-000000420011'), 'true',
   'onboarding records that the client confirmed the displayed versions');
 set local role authenticated;
--- Legacy 8-argument form still records the current versions (Master §16 step 9b).
+-- H2P2-05 (migration 163): the ids are required; the former 8-argument "record whatever is current" form is refused.
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000420004", "role": "authenticated"}';
-select is(public.complete_onboarding('Persona Cuatro', '1990-01-01', 'F', '+528110042401', 'Contacto', '+528110042402', 'Madre') ->> 'profile_readiness',
-  'READY', 'legacy 8-argument onboarding still works');
-select is((public.get_my_legal_status() ->> 'needs_acceptance')::boolean, false, 'legacy onboarding recorded the current versions');
+select is(pg_temp.err($$ select public.complete_onboarding('Persona Cuatro', '1990-01-01', 'F', '+528110042401', 'Contacto', '+528110042402', 'Madre') $$)
+  ->> 'code', 'VALIDATION_ERROR', 'onboarding without version ids is VALIDATION_ERROR (acceptance is never implied)');
+select is(pg_temp.err($$ select public.complete_onboarding('Persona Cuatro', '1990-01-01', 'F', '+528110042401', 'Contacto', '+528110042402', 'Madre') $$)
+  -> 'detail' ->> 'field', 'legal_document_version_ids', 'the validation error names the missing field');
+select is(public.complete_onboarding('Persona Cuatro', '1990-01-01', 'F', '+528110042401', 'Contacto', '+528110042402', 'Madre', null,
+  array['69000000-0000-4000-8000-000000420011', '69000000-0000-4000-8000-000000420002']::uuid[]) ->> 'profile_readiness',
+  'READY', 'onboarding with the displayed current ids completes');
+select is((public.get_my_legal_status() ->> 'needs_acceptance')::boolean, false, 'onboarding recorded the current versions');
 
 -- ---------------------------------------------------------------------------------------------
 -- Registration context: shape, privacy and resolution rules.

@@ -3,7 +3,7 @@ begin;
 create extension if not exists pgtap with schema extensions;
 set local search_path = extensions, public;
 
-select plan(41);
+select plan(59);
 
 create function pg_temp.captured_detail(sql text) returns text language plpgsql as $$
 declare v_detail text;
@@ -15,6 +15,10 @@ exception when others then
   return sqlerrm || '|' || coalesce(v_detail, '');
 end $$;
 
+-- The ids a client displayed: exactly the CURRENT published account-level versions (OWN-05; required since 163).
+create function pg_temp.ids() returns uuid[] language sql as $$
+  select coalesce(array_agg(c.legal_document_version_id), '{}') from private.account_legal_current_versions() c $$;
+
 -- Synthetic identities only. uuids: users b0xx, profiles b1xx, staff b2xx.
 insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-00000000b001', 'onboard-adult@example.test'),
@@ -23,7 +27,8 @@ insert into auth.users (id, email) values
   ('00000000-0000-4000-8000-00000000b004', 'grant-target@example.test'),
   ('00000000-0000-4000-8000-00000000b005', 'edition-operator@example.test'),
   ('00000000-0000-4000-8000-00000000b006', 'second-admin@example.test'),
-  ('00000000-0000-4000-8000-00000000b007', 'no-such-profile-check@example.test');
+  ('00000000-0000-4000-8000-00000000b007', 'no-such-profile-check@example.test'),
+  ('00000000-0000-4000-8000-00000000b008', 'onboard-resume@example.test');
 
 insert into app.runner_profile (runner_profile_id, auth_user_id, profile_readiness, account_state, full_name,
   date_of_birth, sex_code, phone_e164, emergency_contact_name, emergency_contact_phone_e164,
@@ -70,7 +75,7 @@ insert into app.legal_document_version (legal_document_id, version, status, publ
 set local "request.jwt.claims" = '';
 select throws_ok($$ select public.ensure_runner_profile() $$, 'P0001', 'AUTH_REQUIRED', 'anon cannot ensure a profile');
 select throws_ok($$ select public.complete_onboarding('X', '2000-01-01', 'F', '+528110000000',
-  'C', '+528110000000', 'Madre') $$, 'P0001', 'AUTH_REQUIRED', 'anon cannot complete onboarding');
+  'C', '+528110000000', 'Madre', null, pg_temp.ids()) $$, 'P0001', 'AUTH_REQUIRED', 'anon cannot complete onboarding');
 select throws_ok($$ select public.get_my_profile() $$, 'P0001', 'AUTH_REQUIRED', 'anon cannot read /me');
 
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-00000000b007", "role": "authenticated"}';
@@ -86,23 +91,38 @@ select is((public.ensure_runner_profile() ->> 'profile_readiness'), 'PROFILE_INC
 -- ---------------------------------------------------------------------------------------------
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-00000000b002", "role": "authenticated"}';
 select throws_ok($$ select public.complete_onboarding('Menor Joven', (current_date - interval '14 years')::date, 'F',
-  '+528110000201', 'Contacto', '+528110000202', 'Madre') $$, 'P0001', 'VALIDATION_ERROR',
+  '+528110000201', 'Contacto', '+528110000202', 'Madre', null, pg_temp.ids()) $$, 'P0001', 'VALIDATION_ERROR',
   'age 14 is rejected (under minimum age)');
 select matches(pg_temp.captured_detail($$ select public.complete_onboarding('Menor Joven',
-  (current_date - interval '14 years')::date, 'F', '+528110000201', 'Contacto', '+528110000202', 'Madre') $$),
+  (current_date - interval '14 years')::date, 'F', '+528110000201', 'Contacto', '+528110000202', 'Madre', null, pg_temp.ids()) $$),
   '.*UNDER_MIN_AGE.*', 'the rejection reason is UNDER_MIN_AGE');
 select throws_ok($$ select public.complete_onboarding('', '2000-01-01', 'F', '+528110000201',
-  'Contacto', '+528110000202', 'Madre') $$, 'P0001', 'VALIDATION_ERROR', 'blank full_name is rejected');
+  'Contacto', '+528110000202', 'Madre', null, pg_temp.ids()) $$, 'P0001', 'VALIDATION_ERROR', 'blank full_name is rejected');
 select throws_ok($$ select public.complete_onboarding('Alguien', '2000-01-01', 'Z', '+528110000201',
-  'Contacto', '+528110000202', 'Madre') $$, 'P0001', 'VALIDATION_ERROR', 'unknown sex_code is rejected');
+  'Contacto', '+528110000202', 'Madre', null, pg_temp.ids()) $$, 'P0001', 'VALIDATION_ERROR', 'unknown sex_code is rejected');
 select throws_ok($$ select public.complete_onboarding('Alguien', '2000-01-01', 'F', 'not-a-phone',
-  'Contacto', '+528110000202', 'Madre') $$, 'P0001', 'VALIDATION_ERROR', 'malformed phone is rejected');
+  'Contacto', '+528110000202', 'Madre', null, pg_temp.ids()) $$, 'P0001', 'VALIDATION_ERROR', 'malformed phone is rejected');
+
+-- ---------------------------------------------------------------------------------------------
+-- complete_onboarding: legal ids are required (H2P2-05, OWN-05 "acceptance never implied")
+-- ---------------------------------------------------------------------------------------------
+select throws_ok($$ select public.complete_onboarding('Menor Joven', (current_date - interval '16 years')::date, 'F',
+  '+528110000201', 'Contacto', '+528110000202', 'Madre') $$, 'P0001', 'VALIDATION_ERROR',
+  'onboarding without legal_document_version_ids is rejected');
+select matches(pg_temp.captured_detail($$ select public.complete_onboarding('Menor Joven',
+  (current_date - interval '16 years')::date, 'F', '+528110000201', 'Contacto', '+528110000202', 'Madre') $$),
+  '.*legal_document_version_ids.*REQUIRED.*', 'the rejection names the field and reason REQUIRED');
+select throws_ok($$ select public.complete_onboarding('Menor Joven', (current_date - interval '16 years')::date, 'F',
+  '+528110000201', 'Contacto', '+528110000202', 'Madre', null, array[]::uuid[]) $$, 'P0001', 'LEGAL_ACCEPTANCE_REQUIRED',
+  'an empty id list does not satisfy the published documents');
+select is((select count(*)::int from app.runner_profile where auth_user_id = '00000000-0000-4000-8000-00000000b002'), 0,
+  'refused onboarding attempts leave no profile and no acceptance behind');
 
 -- ---------------------------------------------------------------------------------------------
 -- complete_onboarding: minor happy path (15-17)
 -- ---------------------------------------------------------------------------------------------
 select is((public.complete_onboarding('Menor Joven', (current_date - interval '16 years')::date, 'F',
-  '+528110000201', 'Contacto', '+528110000202', 'Madre') ->> 'profile_readiness'), 'READY', 'a 16-year-old reaches READY');
+  '+528110000201', 'Contacto', '+528110000202', 'Madre', null, pg_temp.ids()) ->> 'profile_readiness'), 'READY', 'a 16-year-old reaches READY');
 select is((select competition_status from app.community_profile cp
   join app.runner_profile rp using (runner_profile_id) where rp.auth_user_id = '00000000-0000-4000-8000-00000000b002'),
   'MINOR_NONCOMPETITIVE', 'minor competition_status is MINOR_NONCOMPETITIVE');
@@ -112,9 +132,28 @@ select is((select is_searchable from app.community_profile cp
 select is((select count(*)::int from app.legal_acceptance la
   join app.runner_profile rp using (runner_profile_id) where rp.auth_user_id = '00000000-0000-4000-8000-00000000b002'),
   2, 'both PUBLISHED legal documents were accepted on onboarding');
--- Resumable: calling again (e.g. correcting a typo) does not duplicate acceptances or the profile row.
-select is((public.complete_onboarding('Menor Joven R', (current_date - interval '16 years')::date, 'F',
-  '+528110000201', 'Contacto', '+528110000202', 'Madre') ->> 'full_name'), 'Menor Joven R', 'onboarding is resumable');
+-- H2P2-01: onboarding is PROFILE_INCOMPLETE -> READY only. Once READY it cannot rewrite identity or eligibility.
+select throws_ok($$ select public.complete_onboarding('Otra Persona', '1980-01-01', 'M',
+  '+528110000201', 'Contacto', '+528110000202', 'Madre', null, pg_temp.ids()) $$, 'P0001', 'CONFLICT',
+  'a READY profile cannot be re-onboarded with an adult date of birth');
+select matches(pg_temp.captured_detail($$ select public.complete_onboarding('Otra Persona', '1980-01-01', 'M',
+  '+528110000201', 'Contacto', '+528110000202', 'Madre', null, pg_temp.ids()) $$),
+  '.*PROFILE_ALREADY_READY.*', 'the refusal reason is PROFILE_ALREADY_READY');
+select is((select full_name from app.runner_profile where auth_user_id = '00000000-0000-4000-8000-00000000b002'),
+  'Menor Joven', 'full_name is unchanged after the refused re-onboarding');
+select is((select date_of_birth from app.runner_profile where auth_user_id = '00000000-0000-4000-8000-00000000b002'),
+  (current_date - interval '16 years')::date, 'date_of_birth is unchanged after the refused re-onboarding');
+select is((select sex_code from app.runner_profile where auth_user_id = '00000000-0000-4000-8000-00000000b002'),
+  'F', 'sex_code is unchanged after the refused re-onboarding');
+select is((select cp.competition_status from app.community_profile cp
+  join app.runner_profile rp using (runner_profile_id) where rp.auth_user_id = '00000000-0000-4000-8000-00000000b002'),
+  'MINOR_NONCOMPETITIVE', 'the minor classification is not recomputed');
+select is((select cp.is_searchable from app.community_profile cp
+  join app.runner_profile rp using (runner_profile_id) where rp.auth_user_id = '00000000-0000-4000-8000-00000000b002'),
+  false, 'a minor does not become searchable through a re-post');
+select throws_ok($$ select public.complete_onboarding('Menor Joven', (current_date - interval '16 years')::date, 'F',
+  '+528110000201', 'Contacto', '+528110000202', 'Madre', null, pg_temp.ids()) $$, 'P0001', 'CONFLICT',
+  'even an identical re-post is refused once READY');
 select is((select count(*)::int from app.legal_acceptance la
   join app.runner_profile rp using (runner_profile_id) where rp.auth_user_id = '00000000-0000-4000-8000-00000000b002'),
   2, 'resuming onboarding does not duplicate legal acceptances');
@@ -122,17 +161,40 @@ select is((select count(*)::int from app.runner_profile where auth_user_id = '00
   'resuming onboarding does not create a second profile');
 
 -- ---------------------------------------------------------------------------------------------
+-- complete_onboarding: an incomplete profile stays resumable; idempotent replay survives READY (H2P2-01)
+-- ---------------------------------------------------------------------------------------------
+set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-00000000b008", "role": "authenticated"}';
+select is((public.ensure_runner_profile() ->> 'profile_readiness'), 'PROFILE_INCOMPLETE', 'resume: a PROFILE_INCOMPLETE profile exists');
+select throws_ok($$ select public.complete_onboarding('Reanuda Perfil', '1992-02-02', 'X', '+528110000801',
+  'Contacto', '+528110000802', 'Madre', null, array['69000000-0000-4000-8000-0000000b00ff']::uuid[]) $$, 'P0001', 'LEGAL_ACCEPTANCE_REQUIRED',
+  'resume: a refused attempt (stale ids) does not make the profile READY');
+select is((select profile_readiness from app.runner_profile where auth_user_id = '00000000-0000-4000-8000-00000000b008'),
+  'PROFILE_INCOMPLETE', 'resume: the profile is still PROFILE_INCOMPLETE after the refusal');
+select is((public.complete_onboarding('Reanuda Perfil', '1992-02-02', 'X', '+528110000801',
+  'Contacto', '+528110000802', 'Madre', 'onboard-key-resume-1', pg_temp.ids()) ->> 'profile_readiness'), 'READY',
+  'resume: the incomplete profile completes (with an Idempotency-Key)');
+select is((public.complete_onboarding('Reanuda Perfil', '1992-02-02', 'X', '+528110000801',
+  'Contacto', '+528110000802', 'Madre', 'onboard-key-resume-1', pg_temp.ids()) ->> 'profile_readiness'), 'READY',
+  'resume: replaying the same Idempotency-Key returns the stored response, not a conflict');
+select throws_ok($$ select public.complete_onboarding('Reanuda Perfil', '1992-02-02', 'X', '+528110000801',
+  'Contacto', '+528110000802', 'Madre', 'onboard-key-resume-2', pg_temp.ids()) $$, 'P0001', 'CONFLICT',
+  'resume: a new Idempotency-Key after READY is refused');
+select is((select count(*)::int from app.legal_acceptance la
+  join app.runner_profile rp using (runner_profile_id) where rp.auth_user_id = '00000000-0000-4000-8000-00000000b008'),
+  (select count(*)::int from private.account_legal_current_versions()), 'resume: one acceptance per current document, no duplicates');
+
+-- ---------------------------------------------------------------------------------------------
 -- complete_onboarding: adult happy path + blocked identity + banned/locked states
 -- ---------------------------------------------------------------------------------------------
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-00000000b003", "role": "authenticated"}';
 select throws_ok($$ select public.complete_onboarding('Bloqueado', '1995-01-01', 'M', '+528110000301',
-  'Contacto', '+528110000302', 'Padre') $$, 'P0001', 'IDENTITY_LOCKED', 'a blocked identity cannot onboard');
+  'Contacto', '+528110000302', 'Padre', null, pg_temp.ids()) $$, 'P0001', 'IDENTITY_LOCKED', 'a blocked identity cannot onboard');
 
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-00000000b001", "role": "authenticated"}';
 select is((public.get_my_profile() ->> 'profile_readiness'), 'READY', 'an already-READY profile reads fine');
 update app.runner_profile set account_state = 'BANNED' where auth_user_id = '00000000-0000-4000-8000-00000000b001';
 select throws_ok($$ select public.complete_onboarding('Adulto Listo', '1990-01-01', 'F', '+528110000101',
-  'Contacto', '+528110000102', 'Madre') $$, 'P0001', 'ACCOUNT_BANNED', 'a banned account cannot re-onboard');
+  'Contacto', '+528110000102', 'Madre', null, pg_temp.ids()) $$, 'P0001', 'ACCOUNT_BANNED', 'a banned account cannot re-onboard');
 update app.runner_profile set account_state = 'ACTIVE' where auth_user_id = '00000000-0000-4000-8000-00000000b001';
 
 -- ---------------------------------------------------------------------------------------------

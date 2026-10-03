@@ -60,6 +60,21 @@ export function queryValue(text: string): string | null {
   return value === "" ? null : value;
 }
 
+/**
+ * The CURRENT published account-level (TERMS_OF_SERVICE / PRIVACY_NOTICE) version ids: exactly what the onboarding
+ * screen displays. Since migration 163 onboarding requires them (H2P2-05); an empty list is valid only while nothing
+ * is published.
+ */
+export function currentAccountLegalVersionIds(): string[] {
+  const ids = queryValue("select string_agg(legal_document_version_id::text, ',') from private.account_legal_current_versions()");
+  return ids ? ids.split(",") : [];
+}
+
+/** Adds the displayed account-level legal version ids to an onboarding body, as the UI does. */
+export function withLegalVersionIds<T extends object>(fields: T): T & { legal_document_version_ids: string[] } {
+  return { ...fields, legal_document_version_ids: currentAccountLegalVersionIds() };
+}
+
 /** Secret-key client for fixture setup/teardown and admin-only reads (local target only). */
 export function systemClient(): SupabaseClient {
   return localSystemClient();

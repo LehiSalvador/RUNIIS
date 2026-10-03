@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { createLegalDocumentVersion, publishLegalDocumentVersion, updateEdition } from "@/lib/server/domain/events/service";
-import { cleanup, createCookieJar, createTestStaff, httpSignIn, queryValue, sql, type TestStaff } from "../helpers";
+import { cleanup, createCookieJar, createTestStaff, httpSignIn, queryValue, sql, withLegalVersionIds, type TestStaff } from "../helpers";
 import { buildEdition, ensureGlobalLegalDocumentsPublished } from "./helpers";
 
 // P2-B over the real HTTP routes of the shared dev server (real HttpOnly session cookies, real Mailpit OTP):
@@ -150,7 +150,7 @@ describe("registration over HTTP (P2-B) integration", () => {
 
     const jar = createCookieJar();
     authUserIds.push(await httpSignIn(jar, `p2b-http-redirect-${Date.now()}@example.test`));
-    await send(jar, "POST", "/api/v1/me/onboarding", { ...onboardingFields, phone_e164: "+528110004710" });
+    await send(jar, "POST", "/api/v1/me/onboarding", withLegalVersionIds({ ...onboardingFields, phone_e164: "+528110004710" }));
 
     const page = await jar.fetch(`/api/v1/events/${oldSlug}`);
     expect(page.status).toBe(308);

@@ -51,7 +51,7 @@ export async function completeOnboarding(
       p_emergency_contact_phone_e164: fields.emergency_contact_phone_e164,
       p_emergency_contact_relationship: fields.emergency_contact_relationship,
       p_idempotency_key: idempotencyKey,
-      p_legal_document_version_ids: fields.legal_document_version_ids ?? null,
+      p_legal_document_version_ids: fields.legal_document_version_ids,
     },
     myProfileSchema,
   );

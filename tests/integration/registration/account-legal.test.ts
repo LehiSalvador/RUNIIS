@@ -3,7 +3,7 @@ import { AppError } from "@/lib/server/http/errors";
 import { acceptAccountLegalDocuments, completeOnboarding, ensureRunnerProfile, getMyLegalStatus } from "@/lib/server/domain/auth/service";
 import { createLegalDocumentVersion, publishLegalDocumentVersion } from "@/lib/server/domain/events/service";
 import { createRegistrationRequest } from "@/lib/server/domain/registration/service";
-import { cleanup, createTestStaff, createTestUser, queryValue, type TestStaff, type TestUser } from "../helpers";
+import { cleanup, createTestStaff, createTestUser, currentAccountLegalVersionIds, queryValue, type TestStaff, type TestUser } from "../helpers";
 import { buildEdition, ensureGlobalLegalDocumentsPublished, selfAcceptance } from "./helpers";
 
 // OWN-05 (owner decision 2026-10-03): TERMS_OF_SERVICE + PRIVACY_NOTICE are accepted in onboarding and
@@ -108,10 +108,49 @@ describe("account-level legal acceptance (OWN-05) integration", () => {
     expect((await getMyLegalStatus(user.client)).documents.every((d) => d.status === "NEVER_ACCEPTED")).toBe(true);
   }, 30_000);
 
-  test("legacy onboarding (no version ids) still records the current versions", async () => {
-    const user = await newcomer("onboard-legacy");
-    await completeOnboarding(user.client, onboardingFields, null);
-    expect((await getMyLegalStatus(user.client)).needs_acceptance).toBe(false);
+  test("H2P2-05: onboarding without version ids is rejected and records nothing (acceptance is never implied)", async () => {
+    const user = await newcomer("onboard-no-ids");
+    // The service type requires the ids; a direct client that omits them reaches the database as null.
+    const error = await appError(completeOnboarding(user.client, onboardingFields as never, null));
+    expect(error.code).toBe("VALIDATION_ERROR");
+    expect(error.details.field).toBe("legal_document_version_ids");
+    expect(queryValue(`select profile_readiness from app.runner_profile where auth_user_id = '${user.authUserId}'`)).toBe("PROFILE_INCOMPLETE");
+    expect((await getMyLegalStatus(user.client)).documents.every((d) => d.status === "NEVER_ACCEPTED")).toBe(true);
+  }, 30_000);
+
+  test("H2P2-01: a READY profile cannot be rewritten through onboarding (identity, minor status, searchability)", async () => {
+    const user = await newcomer("onboard-guard");
+    const minorDob = new Date(Date.now() - 16 * 365.25 * 24 * 3600 * 1000).toISOString().slice(0, 10);
+    const first = await completeOnboarding(user.client, { ...onboardingFields, date_of_birth: minorDob, legal_document_version_ids: currentAccountLegalVersionIds() }, null);
+    expect(first.profile_readiness).toBe("READY");
+    const state = () =>
+      queryValue(`
+        select rp.full_name || '|' || rp.date_of_birth || '|' || rp.sex_code || '|' || cp.competition_status || '|' || cp.is_searchable
+        from app.runner_profile rp join app.community_profile cp using (runner_profile_id) where rp.auth_user_id = '${user.authUserId}'`);
+    const before = state();
+    expect(before).toContain("MINOR_NONCOMPETITIVE|false");
+
+    const error = await appError(
+      completeOnboarding(
+        user.client,
+        { ...onboardingFields, full_name: "Otro Nombre", date_of_birth: "1980-01-01", sex_code: "M", legal_document_version_ids: currentAccountLegalVersionIds() },
+        null,
+      ),
+    );
+    expect(error.code).toBe("CONFLICT");
+    expect(error.details.reason).toBe("PROFILE_ALREADY_READY");
+    expect(state()).toBe(before);
+  }, 30_000);
+
+  test("H2P2-01: the same Idempotency-Key replays the response that made the profile READY, a new key is refused", async () => {
+    const user = await newcomer("onboard-idem");
+    const fields = { ...onboardingFields, legal_document_version_ids: currentAccountLegalVersionIds() };
+    const key = `p2g5-idem-${user.authUserId}`;
+    const first = await completeOnboarding(user.client, fields, key);
+    const replay = await completeOnboarding(user.client, fields, key);
+    expect(replay.runner_profile_id).toBe(first.runner_profile_id);
+    expect(replay.profile_readiness).toBe("READY");
+    expect((await appError(completeOnboarding(user.client, fields, `${key}-2`))).details.reason).toBe("PROFILE_ALREADY_READY");
   }, 30_000);
 
   test("P2-AC-02.b: a buyer without current account-level acceptance cannot create a request (stable code, scope ACCOUNT)", async () => {
