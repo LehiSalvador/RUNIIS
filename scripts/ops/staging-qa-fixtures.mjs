@@ -104,6 +104,14 @@ export function resolveConfig(env, argv = []) {
   return { local, mode, baseUrl: base.origin, supabaseUrl: supabase.origin, serverKey, bypass, adminEmail, whatsapp };
 }
 
+/** Names the Auth failure (message + status only, never a key). A local `Database error saving new user` means the
+ * account row exists but Auth cannot see it (seed rows missing instance_id/aud/created_at): re-apply
+ * supabase/seeds/10_auth_users.sql, which heals them, instead of changing the before_user_created hook. */
+export function authFailure(error) {
+  const detail = error ? `Auth said: ${String(error.message ?? "unknown").slice(0, 120)}${error.status ? ` (HTTP ${error.status})` : ""}; ` : "";
+  return `${detail}check the server key and QA_ADMIN_EMAIL; in local mode re-apply supabase/seeds/10_auth_users.sql`;
+}
+
 export function maskEmail(email) {
   const [name, domain] = email.split("@");
   return `${name.slice(0, 2)}***@${domain}`;
@@ -222,7 +230,7 @@ function createClientSession(cfg) {
       const supabase = createClient(cfg.supabaseUrl, cfg.serverKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
       const link = await supabase.auth.admin.generateLink({ type: "magiclink", email: cfg.adminEmail });
       const code = link.data?.properties?.email_otp;
-      if (link.error || !code) throw new FixtureError("could not mint an admin OTP (check the server key and QA_ADMIN_EMAIL)");
+      if (link.error || !code) throw new FixtureError(`could not mint an admin OTP (${authFailure(link.error)})`);
       await request("POST", "/api/v1/auth/verify", { email: cfg.adminEmail, code });
     },
   };
@@ -231,7 +239,7 @@ function createClientSession(cfg) {
 async function prepareAdmin(cfg) {
   const supabase = createClient(cfg.supabaseUrl, cfg.serverKey, { auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false } });
   const link = await supabase.auth.admin.generateLink({ type: "magiclink", email: cfg.adminEmail });
-  if (link.error || !link.data?.user) throw new FixtureError("could not ensure the admin account (check the server key and QA_ADMIN_EMAIL)");
+  if (link.error || !link.data?.user) throw new FixtureError(`could not ensure the admin account (${authFailure(link.error)})`);
   process.stdout.write(`${JSON.stringify({ ok: true, mode: "prepare-admin", admin: maskEmail(cfg.adminEmail), next: "grant GLOBAL ADMIN with scripts/ops/bootstrap-admin.mjs" })}\n`);
 }
 

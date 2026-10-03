@@ -8,15 +8,39 @@
 -- here. A real deployment scopes OPERATOR/CHECKIN per Edition; GLOBAL keeps these accounts directly
 -- useful for manual QA without an ordering dependency on another task's seed file.
 
-insert into auth.users (id, email) values
-  ('00000000-0000-4000-8000-000000200001', 'admin@runiis.test'),
-  ('00000000-0000-4000-8000-000000200002', 'operator@runiis.test'),
-  ('00000000-0000-4000-8000-000000200003', 'checkin@runiis.test'),
-  ('00000000-0000-4000-8000-000000200004', 'moderator@runiis.test'),
-  ('00000000-0000-4000-8000-000000200005', 'runner.a@runiis.test'),
-  ('00000000-0000-4000-8000-000000200006', 'runner.b@runiis.test'),
-  ('00000000-0000-4000-8000-000000200007', 'minor@runiis.test')
-on conflict (id) do nothing;
+-- GoTrue only finds an account whose instance_id is its own zero UUID (and whose aud/role are
+-- 'authenticated'). A bare (id, email) row has them NULL, so Auth cannot see it: admin generateLink /
+-- signInWithOtp then tries to CREATE the same email and fails with "Database error saving new user"
+-- (unique violation users_email_partial_key); a NULL created_at breaks its user scan the same way. The
+-- rows below carry the columns Auth itself writes, so they can sign in through OTP; the upsert also
+-- heals a database seeded before this fix.
+insert into auth.users (id, email, instance_id, aud, role, email_confirmed_at, raw_app_meta_data, raw_user_meta_data,
+  created_at, updated_at, confirmation_token, recovery_token, email_change, email_change_token_new)
+select v.id, v.email, '00000000-0000-0000-0000-000000000000', 'authenticated', 'authenticated', now(),
+  '{"provider": "email", "providers": ["email"]}'::jsonb,
+  jsonb_build_object('sub', v.id, 'email', v.email, 'email_verified', true, 'phone_verified', false),
+  now(), now(), '', '', '', ''
+from (values
+  ('00000000-0000-4000-8000-000000200001'::uuid, 'admin@runiis.test'),
+  ('00000000-0000-4000-8000-000000200002'::uuid, 'operator@runiis.test'),
+  ('00000000-0000-4000-8000-000000200003'::uuid, 'checkin@runiis.test'),
+  ('00000000-0000-4000-8000-000000200004'::uuid, 'moderator@runiis.test'),
+  ('00000000-0000-4000-8000-000000200005'::uuid, 'runner.a@runiis.test'),
+  ('00000000-0000-4000-8000-000000200006'::uuid, 'runner.b@runiis.test'),
+  ('00000000-0000-4000-8000-000000200007'::uuid, 'minor@runiis.test')) v(id, email)
+on conflict (id) do update set
+  instance_id = coalesce(auth.users.instance_id, excluded.instance_id),
+  aud = coalesce(auth.users.aud, excluded.aud),
+  role = coalesce(auth.users.role, excluded.role),
+  email_confirmed_at = coalesce(auth.users.email_confirmed_at, excluded.email_confirmed_at),
+  raw_app_meta_data = coalesce(auth.users.raw_app_meta_data, excluded.raw_app_meta_data),
+  raw_user_meta_data = coalesce(auth.users.raw_user_meta_data, excluded.raw_user_meta_data),
+  created_at = coalesce(auth.users.created_at, excluded.created_at),
+  updated_at = coalesce(auth.users.updated_at, excluded.updated_at),
+  confirmation_token = coalesce(auth.users.confirmation_token, excluded.confirmation_token),
+  recovery_token = coalesce(auth.users.recovery_token, excluded.recovery_token),
+  email_change = coalesce(auth.users.email_change, excluded.email_change),
+  email_change_token_new = coalesce(auth.users.email_change_token_new, excluded.email_change_token_new);
 
 -- READY + ACTIVE profiles for everyone except the minor (handled separately below): staff accounts
 -- also get a runner_profile so they can exercise the self-service flows, not just admin ones.

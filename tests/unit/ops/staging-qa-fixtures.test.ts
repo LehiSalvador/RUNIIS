@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -18,9 +19,10 @@ const script = (await import(/* @vite-ignore */ pathToFileURL(`${process.cwd()}/
   FixtureError: new (message?: string) => Error;
   resolveConfig: (env: Env, argv?: string[]) => { local: boolean; mode: string; baseUrl: string; supabaseUrl: string; bypass?: string; whatsapp: string };
   maskEmail: (email: string) => string;
+  authFailure: (error?: { message?: string; status?: number } | null) => string;
   fixtureSpecs: (whatsapp: string) => FixtureSpec[];
 };
-const { FixtureError, STAGING_HOST, STAGING_SUPABASE_REF, fixtureSpecs, maskEmail, resolveConfig } = script;
+const { FixtureError, STAGING_HOST, STAGING_SUPABASE_REF, authFailure, fixtureSpecs, maskEmail, resolveConfig } = script;
 
 // P2-AC-16: the staging fixture script is env-only and refuses any target that is not the staging project. These
 // tests exercise the pure guard (no network, no secrets): synthetic values only.
@@ -109,5 +111,26 @@ describe("staging-qa-fixtures target guard", () => {
     }
     expect(specs.find((s) => s.mode === "EXTERNAL_WHATSAPP")!.whatsapp).toBe("+525555550100");
     expect(specs.find((s) => s.mode === "FREE")!.modalities.every((m) => m.price === 0)).toBe(true);
+  });
+
+  it("names the Auth failure without echoing anything but its message and status", () => {
+    const text = authFailure({ message: "Database error saving new user", status: 500 });
+    expect(text).toContain("Database error saving new user (HTTP 500)");
+    expect(text).toContain("10_auth_users.sql");
+    expect(authFailure(null)).toContain("QA_ADMIN_EMAIL");
+    expect(authFailure({ message: "x".repeat(500) }).length).toBeLessThan(300);
+  });
+
+  // Root cause of the local `Database error saving new user`: seed rows without instance_id/aud/created_at are
+  // invisible to GoTrue, so generateLink tried to create the same email. The seed must keep writing them.
+  it("the local seed gives the QA admin the columns Auth needs to find the account", () => {
+    const seed = readFileSync(`${process.cwd()}/supabase/seeds/10_auth_users.sql`, "utf8");
+    expect(seed).toContain("admin@runiis.test");
+    const words = new Set(seed.split(/[^a-z_]+/i));
+    for (const column of ["instance_id", "aud", "role", "email_confirmed_at", "created_at", "updated_at"]) {
+      expect(words.has(column), column).toBe(true);
+    }
+    expect(seed).toContain("00000000-0000-0000-0000-000000000000");
+    expect(seed).toMatch(/on conflict \(id\) do update/);
   });
 });
