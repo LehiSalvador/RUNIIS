@@ -1,8 +1,13 @@
 import type { Page } from "@playwright/test";
 import { scanForSeriousViolations } from "../support/axe";
+import { hasSeededEditions, SEEDED_EDITIONS_ONLY } from "../support/targets";
 import { SEED, availabilityBody, expect, localSql, stubMapTiles, test } from "./support";
 
 const HISTORICAL_SLUG = "demo-libre-slug-anterior-e2e";
+
+// Event-state coverage needs the seeded Editions and local SQL; a remote target gets the fixture-event
+// smoke in tests/e2e/revalidation instead.
+test.skip(!hasSeededEditions(), SEEDED_EDITIONS_ONLY);
 
 /** Master §56 page-level explanation (Alert: role alert or status). */
 function notice(page: Page, text: string) {
@@ -144,11 +149,13 @@ test.describe("Event page (Master §58)", () => {
 
 test.describe("historical slug (Master §59)", () => {
   test.beforeAll(() => {
+    if (!hasSeededEditions()) return;
     localSql(
       `insert into app.edition_slug_history (edition_id, old_slug, new_slug) values ('50000000-0000-4000-8000-000000900001', '${HISTORICAL_SLUG}', '${SEED.open}') on conflict (old_slug) do nothing`,
     );
   });
   test.afterAll(() => {
+    if (!hasSeededEditions()) return;
     // slug history is append-only (reject_mutation trigger); the synthetic row is removed with
     // triggers off for this local session only.
     localSql(`set session_replication_role = replica; delete from app.edition_slug_history where old_slug = '${HISTORICAL_SLUG}'`);

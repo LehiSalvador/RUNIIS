@@ -1,4 +1,6 @@
-import { createReadyUser, seedPendingRequest } from "../support/account";
+import { createReadyUser, LOCAL_DB_ONLY, seedPendingRequest } from "../support/account";
+import { e2eEnv } from "../support/env";
+import { hasSeededEditions, SEEDED_EDITIONS_ONLY } from "../support/targets";
 import { expect, gotoAndSettle, test, unexpectedConsoleErrors } from "./support";
 
 test.describe.configure({ timeout: 120_000 });
@@ -7,6 +9,7 @@ const OPEN_EDITION = { id: "50000000-0000-4000-8000-000000900001", name: "RUNIIS
 const UPCOMING_EDITION = { id: "50000000-0000-4000-8000-000000900003", name: "RUNIIS Demo Próximamente" };
 
 test("favorites and logged-in reminders, then consent toggles persist", async ({ page, a11y, evidence, consoleErrors }) => {
+  test.skip(!hasSeededEditions(), SEEDED_EDITIONS_ONLY);
   await createReadyUser(page, "comms");
   await gotoAndSettle(page, "/cuenta/favoritos");
   await expect(page.getByRole("heading", { name: "No tienes carreras favoritas" })).toBeVisible();
@@ -82,6 +85,7 @@ test("reminder confirmation landing: POST on click, token stripped from the URL,
 });
 
 test("keyboard, skip link, account nav and reduced motion", async ({ page, a11y }) => {
+  test.skip(!e2eEnv().localDb, LOCAL_DB_ONLY);
   await page.emulateMedia({ reducedMotion: "reduce" });
   const user = await createReadyUser(page, "kbd");
   seedPendingRequest(user.runnerProfileId, 45);

@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import type { Page } from "@playwright/test";
-import { expect, test as base } from "../support/fixtures";
+import { expect as baseExpect, test as base } from "../support/fixtures";
 
 // Public specs never reach the real OpenFreeMap CDN (local targets only): its style URL is answered
 // with a minimal tile-less style, so MapLibre renders the route line and POIs from our own GeoJSON.
@@ -29,6 +29,9 @@ export const test = base.extend<{ mapTiles: void }>({
   ],
 });
 
+// The first hit on a route compiles it (local dev server) or cold-starts it (remote), and the event
+// page's availability and the library's client handlers only settle after hydration: 5 s is too tight.
+const expect = baseExpect.configure({ timeout: 15_000 });
 export { expect };
 
 /** Seeded Editions (supabase/seeds/20_events.sql). */

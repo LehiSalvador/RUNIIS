@@ -6,7 +6,7 @@ import { expect as baseExpect, test as base } from "../support/fixtures";
 // The shared dev server compiles routes on first hit and runs real auth/DB round trips.
 export const expect = baseExpect.configure({ timeout: 20_000 });
 
-export const EVIDENCE_DIR = ".salvaops-agent-evidence/F2-account/screens";
+export const EVIDENCE_DIR = ".salvaops-agent-evidence/P2-A-e2e-harness-revalidation/screens";
 mkdirSync(EVIDENCE_DIR, { recursive: true });
 
 /** Account specs drive the real dev server (first compile of a route can take a while). */

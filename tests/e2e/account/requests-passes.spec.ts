@@ -1,7 +1,9 @@
-import { createReadyUser, seedConfirmedWithPasses, seedPendingRequest, SEED_EDITION } from "../support/account";
+import { createReadyUser, LOCAL_DB_ONLY, seedConfirmedWithPasses, seedPendingRequest, SEED_EDITION } from "../support/account";
+import { e2eEnv } from "../support/env";
 import { expect, gotoAndSettle, test, unexpectedConsoleErrors } from "./support";
 
 test.describe.configure({ timeout: 120_000 });
+test.skip(!e2eEnv().localDb, LOCAL_DB_ONLY);
 
 test("pending request: server-time countdown, WhatsApp handoff, honest copy, cancel with confirmation", async ({ page, a11y, evidence, consoleErrors }) => {
   const user = await createReadyUser(page, "req");

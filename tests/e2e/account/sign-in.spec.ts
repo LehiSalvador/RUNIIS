@@ -1,4 +1,5 @@
-import { birthDateForAge, fetchOtpCode, resetAuthIpBuckets, uniqueEmail } from "../support/account";
+import { birthDateForAge, fetchOtpCode, resetAuthIpBuckets, uniqueEmail, usesAdminOtp } from "../support/account";
+import { e2eEnv } from "../support/env";
 import { expect, gotoAndSettle, test, unexpectedConsoleErrors } from "./support";
 
 test.describe.configure({ timeout: 120_000 });
@@ -10,6 +11,13 @@ function toDisplay(iso: string): string {
 
 async function requestCode(page: import("@playwright/test").Page, email: string) {
   resetAuthIpBuckets();
+  // Admin-OTP runs never send a real email: the app's OTP request is answered locally by the browser
+  // route and the code is generated server-side (fetchOtpCode), then verified through the real API.
+  if (usesAdminOtp()) {
+    await page.route("**/api/v1/auth/otp", (route) =>
+      route.fulfill({ status: 202, contentType: "application/json", body: JSON.stringify({ data: { accepted: true } }) }),
+    );
+  }
   await page.getByLabel("Correo electrónico").fill(email);
   await page.getByRole("button", { name: "Enviar código" }).click();
   await expect(page.getByRole("status").filter({ hasText: email })).toBeVisible({ timeout: 30_000 });
@@ -32,8 +40,10 @@ test("guards: a signed-out visitor is sent to /entrar with a safe return path", 
   await expect(page).toHaveURL(/\/entrar\?next=%2Fcuenta%2Famigos$/);
   await expect(page.getByRole("heading", { level: 1, name: "Entra a RUNIIS" })).toBeVisible();
   await expect(page.getByText("Inicia sesión para continuar")).toBeVisible();
-  // Google is disabled in local Docker: the button is shown but disabled with honest copy.
-  await expect(page.getByRole("button", { name: "Continuar con Google" })).toBeDisabled();
+  // Google is disabled in local Docker (button shown but disabled with honest copy); a remote
+  // target decides for itself, so only the entry point's presence is asserted there.
+  if (e2eEnv().remote) await expect(page.getByText("Continuar con Google").first()).toBeVisible();
+  else await expect(page.getByRole("button", { name: "Continuar con Google" })).toBeDisabled();
   await evidence("entrar");
   await a11y();
 

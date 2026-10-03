@@ -1,4 +1,5 @@
 import { test as base, expect, type Page } from "@playwright/test";
+import { protectBypass } from "./bypass";
 
 /**
  * Local fixtures for foundation specs. The header chip reads GET /api/v1/session (always 200); it is
@@ -28,6 +29,11 @@ export function isExpectedConsoleNoise(_text: string): boolean {
 }
 
 export const test = base.extend<{ consoleErrors: string[] }>({
+  // Remote runs send the Vercel bypass header through extraHTTPHeaders; keep it off third-party origins.
+  context: async ({ context }, provide) => {
+    await protectBypass(context);
+    await provide(context);
+  },
   consoleErrors: [
     async ({ page }, use) => {
       const errors: string[] = [];

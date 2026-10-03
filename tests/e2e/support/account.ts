@@ -2,6 +2,8 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { expect, type APIRequestContext, type Page } from "@playwright/test";
+import { e2eEnv } from "./env";
+import { adminOtpFor, fixtureEmailFor } from "./remote-auth";
 
 /**
  * F2 account e2e fixtures: real local auth only (POST /auth/otp -> Mailpit -> POST /auth/verify, the
@@ -22,8 +24,12 @@ export const SEED_EDITION = {
   name: "Seed Carrera Registro 2026",
 } as const;
 
-/** Runs the fixture SQL in one transaction (all or nothing). */
+/** Skip reason for specs that seed state through the local Docker DB. */
+export const LOCAL_DB_ONLY = "needs the local Docker DB (SQL-seeded fixtures); not available against a remote target";
+
+/** Runs the fixture SQL in one transaction (all or nothing). Local Docker DB only. */
 export function psql(text: string): string {
+  if (!e2eEnv().localDb) throw new Error(LOCAL_DB_ONLY);
   const result = spawnSync("docker", ["exec", "-i", DB_CONTAINER, "psql", "-U", "postgres", "-d", "postgres", "-v", "ON_ERROR_STOP=1", "-q", "-t", "-A"], {
     input: `begin;\n${text};\ncommit;`,
     encoding: "utf8",
@@ -33,7 +39,13 @@ export function psql(text: string): string {
 }
 
 export function uniqueEmail(label: string): string {
+  if (e2eEnv().adminOtp) return fixtureEmailFor(label);
   return `f2-${label}-${randomUUID().slice(0, 12)}@example.test`;
+}
+
+/** True when sign-in uses the admin OTP path (no mailbox involved). */
+export function usesAdminOtp(): boolean {
+  return e2eEnv().adminOtp !== null;
 }
 
 /**
@@ -42,10 +54,13 @@ export function uniqueEmail(label: string): string {
  * the per-email limits (the behaviour under test) intact.
  */
 export function resetAuthIpBuckets(): void {
+  if (!e2eEnv().localDb) return; // remote targets rate-limit by real client IP; nothing to reset
   psql("delete from infra.rate_limit_counter where scope in ('auth.otp.ip', 'auth.verify.ip');");
 }
 
 export async function fetchOtpCode(email: string, timeoutMs = 45_000): Promise<string> {
+  if (usesAdminOtp()) return adminOtpFor(email);
+  if (!e2eEnv().localDb) throw new Error("Remote sign-in needs E2E_SUPABASE_URL and E2E_SUPABASE_SERVER_KEY (no mailbox is readable there)");
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const search = new URL("/api/v1/search", MAILPIT_URL);
@@ -63,13 +78,25 @@ export async function fetchOtpCode(email: string, timeoutMs = 45_000): Promise<s
   }
 }
 
-/** Real OTP sign-in through the app API; the page's browser context receives the session cookies. */
+/**
+ * Real OTP sign-in through the app API; the page's browser context receives the session cookies.
+ * Admin-OTP mode skips POST /auth/otp (no email is sent) and verifies the generated code directly;
+ * a 429 on verify (auth.verify.ip: 30 per 10 min per client IP) is waited out a few times.
+ */
 export async function signInViaApi(request: APIRequestContext, email: string): Promise<void> {
   resetAuthIpBuckets();
-  const otp = await request.post("/api/v1/auth/otp", { data: { email } });
-  expect(otp.status(), "OTP request").toBe(202);
+  if (!usesAdminOtp()) {
+    const otp = await request.post("/api/v1/auth/otp", { data: { email } });
+    expect(otp.status(), "OTP request").toBe(202);
+  }
   const code = await fetchOtpCode(email);
-  const verify = await request.post("/api/v1/auth/verify", { data: { email, code } });
+  const origin = new URL(e2eEnv().baseURL).origin;
+  let verify = await request.post("/api/v1/auth/verify", { data: { email, code }, headers: { Origin: origin } });
+  for (let attempt = 0; attempt < 3 && verify.status() === 429 && !e2eEnv().localDb; attempt++) {
+    const waitSeconds = Math.min(Number(verify.headers()["retry-after"] ?? 60) || 60, 90);
+    await new Promise((resolve) => setTimeout(resolve, waitSeconds * 1000));
+    verify = await request.post("/api/v1/auth/verify", { data: { email, code }, headers: { Origin: origin } });
+  }
   expect(verify.status(), "OTP verify").toBe(200);
 }
 

@@ -1,4 +1,5 @@
-import { createReadyUser, setAccountState } from "../support/account";
+import { createReadyUser, LOCAL_DB_ONLY, setAccountState } from "../support/account";
+import { e2eEnv } from "../support/env";
 import { expect, gotoAndSettle, test, unexpectedConsoleErrors } from "./support";
 
 test.describe.configure({ timeout: 120_000 });
@@ -34,6 +35,7 @@ test("perfil: identity is read-only, phone and emergency fields are editable", a
 });
 
 test("identity-locked and banned accounts see a restricted state with a support path", async ({ page, a11y, evidence }) => {
+  test.skip(!e2eEnv().localDb, LOCAL_DB_ONLY);
   const user = await createReadyUser(page, "locked");
 
   setAccountState(user.runnerProfileId, "IDENTITY_LOCKED");

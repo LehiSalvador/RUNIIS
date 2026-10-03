@@ -1,8 +1,10 @@
 import { scanForSeriousViolations } from "../support/axe";
+import { NO_FIXTURE_EVENT, openEditionSlug } from "../support/targets";
 import { expect, test } from "./support";
 
 test.describe("Home (Master §53)", () => {
   test("sections render in Master order, cards link to Event pages, no console errors, axe clean", async ({ page, consoleErrors }) => {
+    test.skip(openEditionSlug() === null, NO_FIXTURE_EVENT);
     await page.goto("/");
     await expect(page).toHaveTitle("RUNIIS — Descubre carreras e inscríbete");
     const h1 = page.getByRole("heading", { level: 1 });

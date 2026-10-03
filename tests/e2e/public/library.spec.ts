@@ -1,8 +1,12 @@
 import { scanForSeriousViolations } from "../support/axe";
+import { hasSeededEditions, NO_FIXTURE_EVENT, openEditionSlug, SEEDED_EDITIONS_ONLY } from "../support/targets";
 import { SEED, expect, test } from "./support";
 
 test.describe("/eventos library (Master §54-56)", () => {
   test("upcoming first, past in its own section, cursor 'Cargar más' appends without duplicates", async ({ page, consoleErrors }) => {
+    test.skip(!hasSeededEditions(), SEEDED_EDITIONS_ONLY);
+    // Pages through every published Edition of the shared DB (integration suites leave dozens behind).
+    test.setTimeout(120_000);
     await page.goto("/eventos");
     await expect(page.getByRole("heading", { level: 1, name: "Eventos" })).toBeVisible();
     const upcoming = page.locator("section[aria-labelledby=proximos]");
@@ -30,6 +34,7 @@ test.describe("/eventos library (Master §54-56)", () => {
   });
 
   test("a failed 'Cargar más' is an inline error, and the retry works", async ({ page }) => {
+    test.skip(!hasSeededEditions(), SEEDED_EDITIONS_ONLY);
     await page.goto("/eventos");
     let fail = true;
     await page.route("**/api/v1/events?*cursor=*", (route) =>
@@ -45,6 +50,7 @@ test.describe("/eventos library (Master §54-56)", () => {
   });
 
   test("search without matches vs filters without results are distinct states", async ({ page }) => {
+    test.skip(openEditionSlug() === null, NO_FIXTURE_EVENT);
     await page.goto("/eventos?q=zzzz-sin-coincidencia");
     await expect(page.getByRole("heading", { name: "Sin coincidencias para “zzzz-sin-coincidencia”" })).toBeVisible();
     await expect(page.getByText("Ningún evento coincide con tus filtros")).toHaveCount(0);
@@ -58,6 +64,7 @@ test.describe("/eventos library (Master §54-56)", () => {
 
   test("filters (desktop sidebar) live in the URL and are restored after visiting an Event page", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name !== "chromium-desktop", "sidebar is lg+");
+    test.skip(!hasSeededEditions(), SEEDED_EDITIONS_ONLY);
     // Scoped to the seeded demo Editions (other suites add their own to the shared DB).
     await page.goto("/eventos?q=RUNIIS+Demo");
     const sidebar = page.getByRole("complementary", { name: "Filtros" });
@@ -101,6 +108,7 @@ test.describe("/eventos library (Master §54-56)", () => {
 
   test("mobile/tablet: filters open in a bottom sheet, apply to the URL, and focus returns", async ({ page }, testInfo) => {
     test.skip(testInfo.project.name === "chromium-desktop", "drawer is below lg");
+    test.skip(!hasSeededEditions(), SEEDED_EDITIONS_ONLY);
     await page.goto("/eventos?q=RUNIIS+Demo");
     const trigger = page.getByRole("button", { name: "Filtros", exact: true });
     await trigger.click();

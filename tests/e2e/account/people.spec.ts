@@ -1,12 +1,14 @@
 import { randomUUID } from "node:crypto";
 import type { Browser, Page } from "@playwright/test";
 import { birthDateForAge, createReadyUser } from "../support/account";
+import { protectBypass } from "../support/bypass";
 import { expect, gotoAndSettle, test, unexpectedConsoleErrors } from "./support";
 
 test.describe.configure({ timeout: 180_000 });
 
 async function secondUser(browser: Browser, baseURL: string | undefined, label: string, dob?: string) {
   const context = await browser.newContext({ baseURL });
+  await protectBypass(context);
   const page = await context.newPage();
   const user = await createReadyUser(page, label, dob ? { date_of_birth: dob } : undefined);
   return { context, page, user };
