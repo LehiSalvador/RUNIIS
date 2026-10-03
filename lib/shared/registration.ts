@@ -50,11 +50,102 @@ export const legalAcceptanceInputSchema = z.strictObject({
   legal_document_version_id: z.uuid(),
 });
 
+/**
+ * OD-P2-01 anti-hoarding. An EXTERNAL_WHATSAPP request from an account younger than `new_account_hours` (server time) needs the
+ * solved ALTCHA payload of a challenge issued for this purpose. FREE Editions and older accounts never see it.
+ */
+export const REGISTRATION_CAPTCHA_PURPOSE = "registration_request" as const;
+export const REGISTRATION_CAPTCHA_REASONS = ["captcha_required", "captcha_invalid"] as const;
+export type RegistrationCaptchaReason = (typeof REGISTRATION_CAPTCHA_REASONS)[number];
+
+/** The widget's solved payload (base64 JSON), sent back verbatim as `altcha`. */
+export const altchaPayloadSchema = z.string().min(1).max(2000);
+
+/** ALTCHA challenge as the widget consumes it (`challengejson`). */
+export const altchaChallengeSchema = z.strictObject({
+  algorithm: z.enum(["SHA-1", "SHA-256", "SHA-512"]),
+  challenge: z.string(),
+  maxnumber: z.number().int().optional(),
+  salt: z.string(),
+  signature: z.string(),
+});
+export type AltchaChallengeView = z.output<typeof altchaChallengeSchema>;
+
 export const createRegistrationRequestBodySchema = z.strictObject({
   edition_id: z.uuid(),
   participants: z.array(participantInputSchema).min(1).max(MAX_REQUEST_PARTICIPANTS),
   legal_acceptances: z.array(legalAcceptanceInputSchema).max(MAX_REQUEST_PARTICIPANTS * 5).default([]),
+  /** Solved ALTCHA payload; only meaningful (and only read) when the server answered `captcha_required`. */
+  altcha: altchaPayloadSchema.optional(),
 });
 export type CreateRegistrationRequestBody = z.output<typeof createRegistrationRequestBodySchema>;
 
+/** `error.details` of the 422 BUSINESS_RULE_VIOLATION the create endpoint answers when the challenge is missing or wrong. */
+export const registrationCaptchaErrorDetailsSchema = z.object({
+  reason: z.enum(REGISTRATION_CAPTCHA_REASONS),
+  captcha: z.object({
+    purpose: z.literal(REGISTRATION_CAPTCHA_PURPOSE),
+    edition_id: z.uuid(),
+    new_account_hours: z.int(),
+    /** A fresh challenge, ready for the widget: solve it and resubmit the SAME body with the SAME Idempotency-Key plus `altcha`. */
+    challenge: altchaChallengeSchema,
+    challenge_endpoint: z.string(),
+  }),
+});
+export type RegistrationCaptchaErrorDetails = z.output<typeof registrationCaptchaErrorDetailsSchema>;
+
+/** GET /api/v1/registration-requests/challenge?edition_id= */
+export const registrationCaptchaQuerySchema = z.strictObject({ edition_id: z.uuid() });
+export const registrationCaptchaStatusSchema = z.strictObject({
+  /** EXTERNAL_WHATSAPP and an account younger than `new_account_hours`. */
+  applies: z.boolean(),
+  /** `applies` and no valid clearance held yet: show the widget before submitting. */
+  required: z.boolean(),
+  has_clearance: z.boolean(),
+  new_account_hours: z.int(),
+  /** Present only when `required`. */
+  challenge: altchaChallengeSchema.nullable(),
+});
+export type RegistrationCaptchaStatus = z.output<typeof registrationCaptchaStatusSchema>;
+
 export const cancelReasonSchema = z.string().trim().min(1).max(500);
+
+// ---- Staff bulk cancellation of PENDING requests (OD-P2-01, P3-D) ----
+
+/** Hard bound of one batch; the database enforces it too. */
+export const BULK_CANCEL_MAX_REQUESTS = 100;
+export const BULK_CANCEL_OUTCOMES = ["CANCELED", "ALREADY_CANCELED", "NOT_CANCELABLE", "NOT_FOUND", "FAILED"] as const;
+export type BulkCancelOutcome = (typeof BULK_CANCEL_OUTCOMES)[number];
+
+/** POST /api/v1/admin/editions/{editionId}/registration-requests/bulk-cancel: explicit ids only, one internal reason for the batch. */
+export const bulkCancelRequestsBodySchema = z.strictObject({
+  request_ids: z
+    .array(z.guid())
+    .min(1)
+    .max(BULK_CANCEL_MAX_REQUESTS)
+    .refine((ids) => new Set(ids.map((value) => value.toLowerCase())).size === ids.length, "duplicate ids"),
+  reason: cancelReasonSchema,
+});
+export type BulkCancelRequestsBody = z.output<typeof bulkCancelRequestsBodySchema>;
+
+const bulkCancelResultRowSchema = z.strictObject({
+  registration_request_id: z.guid(),
+  outcome: z.enum(BULK_CANCEL_OUTCOMES),
+  /** Resulting (CANCELED, ALREADY_CANCELED) or current (NOT_CANCELABLE) request status. */
+  status: z.string().optional(),
+  /** Stable domain code of an unexpected per-id failure (outcome FAILED); retry that id. */
+  code: z.string().optional(),
+});
+export const bulkCancelResultSchema = z.strictObject({
+  edition_id: z.guid(),
+  /** Links the per-request audit records of this batch. */
+  correlation_id: z.guid(),
+  requested_count: z.int(),
+  canceled_count: z.int(),
+  already_canceled_count: z.int(),
+  /** NOT_CANCELABLE (CONFIRMED, buyer-canceled...) plus NOT_FOUND (unknown or another Edition). */
+  rejected_count: z.int(),
+  failed_count: z.int(),
+  results: z.array(bulkCancelResultRowSchema),
+});
+export type BulkCancelResult = z.output<typeof bulkCancelResultSchema>;

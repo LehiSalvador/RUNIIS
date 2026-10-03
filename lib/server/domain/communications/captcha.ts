@@ -7,38 +7,51 @@ import { getServerEnv } from "../../env";
 import { callRpc } from "../../rpc";
 import { createSystemClient } from "../../supabase/clients";
 
-// F1/SEC-082: a self-hosted proof-of-work CAPTCHA (ALTCHA) for the anonymous reminder endpoint, no
-// third-party service and no user data leaves RUNIIS. The HMAC key is derived from
-// INTERNAL_CRON_SECRET via HKDF with a distinct info label, so this never doubles as the cron
-// secret itself and no new env var is needed.
-const ALTCHA_HKDF_INFO = "runiis:altcha:reminder:v1";
+// F1/SEC-082: a self-hosted proof-of-work CAPTCHA (ALTCHA), no third-party service and no user data leaves
+// RUNIIS. The HMAC key is derived from INTERNAL_CRON_SECRET via HKDF with a distinct info label PER PURPOSE, so
+// it never doubles as the cron secret itself, no new env var is needed, and a challenge solved for one purpose
+// can never verify for another (P3-D OD-P2-01: the registration-request challenge reuses the mechanism).
+// The single-use replay table (private.altcha_replay) is shared: a challenge hash is unguessable without the key.
+export type AltchaPurpose = "reminder" | "registration_request";
+
+// The reminder label is the F1 value, unchanged: challenges already in flight keep verifying.
+const ALTCHA_HKDF_INFO: Readonly<Record<AltchaPurpose, string>> = {
+  reminder: "runiis:altcha:reminder:v1",
+  registration_request: "runiis:altcha:registration-request:v1",
+};
 const ALTCHA_HKDF_KEY_BYTES = 32;
 const CHALLENGE_TTL_MS = 2 * 60 * 1000; // 2 minutes to solve
 const CHALLENGE_MAX_NUMBER = 100_000; // bounds solve time on typical client hardware at SHA-256
 
-function altchaHmacKey(): string {
+function altchaHmacKey(purpose: AltchaPurpose): string {
   const secret = getServerEnv().INTERNAL_CRON_SECRET;
-  const key = hkdfSync("sha256", Buffer.from(secret, "utf8"), Buffer.alloc(0), Buffer.from(ALTCHA_HKDF_INFO, "utf8"), ALTCHA_HKDF_KEY_BYTES);
+  const key = hkdfSync("sha256", Buffer.from(secret, "utf8"), Buffer.alloc(0), Buffer.from(ALTCHA_HKDF_INFO[purpose], "utf8"), ALTCHA_HKDF_KEY_BYTES);
   return Buffer.from(key).toString("hex");
 }
 
-export type ReminderChallenge = Challenge;
+export type AltchaChallenge = Challenge;
+export type ReminderChallenge = AltchaChallenge;
+
+/** A fresh challenge for `purpose`: what the frontend ALTCHA widget solves. */
+export async function createAltchaChallenge(purpose: AltchaPurpose): Promise<AltchaChallenge> {
+  return createChallenge({ hmacKey: altchaHmacKey(purpose), maxnumber: CHALLENGE_MAX_NUMBER, expires: new Date(Date.now() + CHALLENGE_TTL_MS) });
+}
 
 /** The GET /api/v1/reminders/challenge contract: what the frontend ALTCHA widget solves. */
 export async function createReminderChallenge(): Promise<ReminderChallenge> {
-  return createChallenge({ hmacKey: altchaHmacKey(), maxnumber: CHALLENGE_MAX_NUMBER, expires: new Date(Date.now() + CHALLENGE_TTL_MS) });
+  return createAltchaChallenge("reminder");
 }
 
 const replayResultSchema = z.object({ consumed: z.boolean() });
 
 /**
  * Verifies the widget's solved payload (base64 JSON: algorithm/challenge/number/salt/signature)
- * against the HMAC signature and its embedded expiry, then atomically claims the challenge
+ * against the HMAC signature of `purpose` and its embedded expiry, then atomically claims the challenge
  * single-use in the DB so a captured/replayed payload never verifies twice (F1). Returns false on
  * any failure without distinguishing the reason -- no oracle for a caller probing the check.
  */
-export async function verifyReminderCaptcha(payload: string): Promise<boolean> {
-  const hmacKey = altchaHmacKey();
+export async function verifyAltchaPayload(purpose: AltchaPurpose, payload: string): Promise<boolean> {
+  const hmacKey = altchaHmacKey(purpose);
   let valid: boolean;
   try {
     valid = await verifySolution(payload, hmacKey, true);
@@ -57,6 +70,11 @@ export async function verifyReminderCaptcha(payload: string): Promise<boolean> {
     replayResultSchema,
   );
   return consumed;
+}
+
+/** Anonymous reminder (F1/SEC-082): behaviour and HKDF label unchanged. */
+export async function verifyReminderCaptcha(payload: string): Promise<boolean> {
+  return verifyAltchaPayload("reminder", payload);
 }
 
 function decodePayload(payload: string): { challenge: string; expiresAt: Date } | null {

@@ -1,18 +1,28 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
+import type { JsonObject } from "@/lib/shared/api-contract";
 import { changeModalityResultSchema, registrationStatusSchema, type CancelReasonCategory } from "@/lib/shared/closure";
-import type { CreateRegistrationRequestBody } from "@/lib/shared/registration";
+import {
+  REGISTRATION_CAPTCHA_PURPOSE,
+  bulkCancelResultSchema,
+  type BulkCancelRequestsBody,
+  type CreateRegistrationRequestBody,
+  type RegistrationCaptchaReason,
+  type RegistrationCaptchaStatus,
+} from "@/lib/shared/registration";
 import {
   registrationContextRedirectSchema,
   registrationContextSchema,
   type RegistrationContext,
 } from "@/lib/shared/registration-context";
 import { buildWhatsAppUrl } from "@/lib/shared/whatsapp";
+import { AppError } from "../../http/errors";
 import { decodeCursor, encodeCursor } from "../../http/pagination";
 import { logEvent } from "../../log";
 import { callRpc } from "../../rpc";
 import { createSystemClient } from "../../supabase/clients";
+import { createAltchaChallenge, verifyAltchaPayload } from "../communications/captcha";
 import { issueCredentialsAfterCommit } from "../passes/credentials";
 import {
   acceptDocumentsResultSchema,
@@ -73,29 +83,103 @@ function writeParticipantCursor(next: { sort_name: string; registration_id: stri
 
 // ---- Buyer commands (Master §65-74) ----
 
+// OD-P2-01 anti-hoarding. The database refuses an EXTERNAL_WHATSAPP request from an account younger than the policy window unless
+// the buyer holds a single-use clearance (migration 721), and it checks that BEFORE any capacity or hold work. Next verifies the
+// ALTCHA payload (HMAC + proof of work + single use) and mints the clearance with the service role. The order is deliberate:
+// the RPC is tried first, so an idempotent replay (stored response) and every buyer the rule does not concern never touch
+// the challenge, and a payload is only spent when the database says it is needed.
+const captchaStatusRowSchema = z.strictObject({
+  applies: z.boolean(),
+  required: z.boolean(),
+  has_clearance: z.boolean(),
+  new_account_hours: z.int(),
+});
+const clearanceGrantSchema = z.object({ granted: z.literal(true) });
+const CAPTCHA_CHALLENGE_ENDPOINT = "/api/v1/registration-requests/challenge";
+const CAPTCHA_MESSAGES: Record<RegistrationCaptchaReason, string> = {
+  captcha_required: "Confirma que eres una persona para enviar tu solicitud.",
+  captcha_invalid: "La verificación no es válida o expiró. Inténtalo de nuevo.",
+};
+
+function isCaptchaRequired(error: unknown): error is AppError {
+  return error instanceof AppError && error.code === "BUSINESS_RULE_VIOLATION" && error.details.reason === "captcha_required";
+}
+
+async function captchaError(reason: RegistrationCaptchaReason, editionId: string, newAccountHours: number): Promise<AppError> {
+  const challenge = await createAltchaChallenge(REGISTRATION_CAPTCHA_PURPOSE);
+  logEvent("info", "registration_captcha_challenged", { edition_id: editionId, reason });
+  return new AppError("BUSINESS_RULE_VIOLATION", {
+    message: CAPTCHA_MESSAGES[reason],
+    details: {
+      reason,
+      captcha: {
+        purpose: REGISTRATION_CAPTCHA_PURPOSE,
+        edition_id: editionId,
+        new_account_hours: newAccountHours,
+        challenge: challenge as unknown as JsonObject,
+        challenge_endpoint: CAPTCHA_CHALLENGE_ENDPOINT,
+      },
+    },
+  });
+}
+
 export async function createRegistrationRequest(
   supabase: SupabaseClient,
   body: CreateRegistrationRequestBody,
   idempotencyKey: string | null,
+  /** Auth user of the session behind `supabase`; the route passes it. Without it a challenged buyer can only be refused. */
+  options: { authUserId?: string | null } = {},
 ) {
   await consumeRateLimit(supabase, "registration_request.create");
-  const view = await callRpc(
-    supabase,
-    "create_registration_request",
-    {
-      p_edition_id: body.edition_id,
-      p_participants: body.participants,
-      p_legal_acceptances: body.legal_acceptances,
-      p_idempotency_key: idempotencyKey,
-    },
-    registrationRequestSchema,
-  );
+  const args = {
+    p_edition_id: body.edition_id,
+    p_participants: body.participants,
+    p_legal_acceptances: body.legal_acceptances,
+    p_idempotency_key: idempotencyKey,
+  };
+  const create = () => callRpc(supabase, "create_registration_request", args, registrationRequestSchema);
+
+  let view: RegistrationRequestView;
+  try {
+    view = await create();
+  } catch (error) {
+    if (!isCaptchaRequired(error)) throw error;
+    const captcha = (error.details.captcha ?? {}) as { new_account_hours?: unknown };
+    const hours = typeof captcha.new_account_hours === "number" ? captcha.new_account_hours : 24;
+    if (body.altcha === undefined || !options.authUserId) throw await captchaError("captcha_required", body.edition_id, hours);
+    if (!(await verifyAltchaPayload(REGISTRATION_CAPTCHA_PURPOSE, body.altcha))) {
+      throw await captchaError("captcha_invalid", body.edition_id, hours);
+    }
+    await callRpc(
+      createSystemClient(),
+      "grant_registration_captcha_clearance",
+      { p_auth_user_id: options.authUserId, p_edition_id: body.edition_id },
+      clearanceGrantSchema,
+    );
+    try {
+      view = await create();
+    } catch (retryError) {
+      // The clearance was spent or expired in between: ask again rather than leak the internal state.
+      if (isCaptchaRequired(retryError)) throw await captchaError("captcha_required", body.edition_id, hours);
+      throw retryError;
+    }
+  }
   logEvent("info", "registration_request_created", { registration_request_id: view.registration_request_id, status: view.status });
   // FREE confirms inline: issue credentials right after commit (A1). Never blocks the response.
   if (view.status === "CONFIRMED") {
     await issueCredentialsAfterCommit(createSystemClient(), view.registration_request_id);
   }
   return withWhatsAppUrl(view);
+}
+
+/**
+ * Proactive form of the challenge for the participant UI: does the rule apply to this buyer on this Edition and, when the widget has to
+ * be shown before submitting, the challenge to solve. Never issues a challenge to a buyer who does not need one.
+ */
+export async function getRegistrationCaptchaStatus(supabase: SupabaseClient, editionId: string): Promise<RegistrationCaptchaStatus> {
+  await consumeRateLimit(supabase, "registration.context");
+  const row = await callRpc(supabase, "registration_captcha_status", { p_edition_id: editionId }, captchaStatusRowSchema);
+  return { ...row, challenge: row.required ? await createAltchaChallenge(REGISTRATION_CAPTCHA_PURPOSE) : null };
 }
 
 export async function getRegistrationRequest(supabase: SupabaseClient, id: string) {
@@ -185,6 +269,33 @@ export async function staffCancelRegistrationRequest(supabase: SupabaseClient, i
   );
   logEvent("info", "registration_request_canceled_by_staff", { registration_request_id: id });
   return withWhatsAppUrl(view);
+}
+
+/**
+ * OD-P2-01 bulk cancellation of PENDING requests: explicit ids (<= 100), one reason, Edition scope and the single-cancel transition
+ * enforced in the database (migration 722). Per-id outcomes are reported, never thrown: a CONFIRMED request, a buyer-canceled one or an id of
+ * another Edition is rejected without effect. Reasons never reach the logs; ids and counts only.
+ */
+export async function staffBulkCancelRegistrationRequests(
+  supabase: SupabaseClient,
+  editionId: string,
+  body: BulkCancelRequestsBody,
+  idempotencyKey: string | null,
+) {
+  const result = await callRpc(
+    supabase,
+    "staff_bulk_cancel_registration_requests",
+    { p_edition_id: editionId, p_request_ids: body.request_ids, p_reason: body.reason, p_idempotency_key: idempotencyKey },
+    bulkCancelResultSchema,
+  );
+  logEvent("info", "registration_requests_bulk_canceled", {
+    edition_id: editionId,
+    requested: result.requested_count,
+    canceled: result.canceled_count,
+    rejected: result.rejected_count,
+    failed: result.failed_count,
+  });
+  return result;
 }
 
 // ---- Participants list/export (Master §172) ----
