@@ -28,6 +28,7 @@ import {
   orderedSelection,
   participantsStepError,
   reconcileDraft,
+  restoreSavedDraft,
   setAccepted,
   setCategory,
   setModality,
@@ -117,7 +118,7 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
       if (subject) {
         clearDraftsOfOtherAccounts(subject);
         const saved = loadDraft(subject, initialContext.edition.edition_id);
-        if (saved && saved.selected.length > 0) setDraft(reconcileDraft(initialContext, saved));
+        if (saved && saved.selected.length > 0) setDraft((current) => restoreSavedDraft(initialContext, current, saved));
       }
       setDraftSubject(subject);
       setHydrated(true);

@@ -303,6 +303,17 @@ export function initialDraft(ctx: RegistrationContext): Draft {
 }
 
 /**
+ * Applies a draft saved by an earlier visit (loaded asynchronously, after the account lookup) to the screen the buyer
+ * already has. It only fills a screen the buyer has not touched: once they ticked, chose or typed anything, their
+ * explicit choice wins and the saved draft is dropped (P2-G8, F2: a late restore used to replace the buyer's click
+ * with the modality that an earlier visit had auto-selected). The saved draft is still reconciled with the context.
+ */
+export function restoreSavedDraft(ctx: RegistrationContext, current: Draft, saved: Draft): Draft {
+  const untouched = JSON.stringify(current) === JSON.stringify(initialDraft(ctx));
+  return untouched ? reconcileDraft(ctx, saved) : current;
+}
+
+/**
  * Reconciles a draft with a fresh context (after a stale-state error or a manual refresh): anything the
  * server no longer offers is dropped; nothing is invented. Typed answers survive when their field still exists.
  */

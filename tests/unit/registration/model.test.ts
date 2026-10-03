@@ -12,6 +12,7 @@ import {
   noRegistrableModality,
   orderedSelection,
   reconcileDraft,
+  restoreSavedDraft,
   setAccepted,
   setCategory,
   setModality,
@@ -123,6 +124,32 @@ describe("P2-AC-05.b the draft only ever holds choices; the server context stays
     const without = { ...ctx, forms: ctx.forms.filter((f) => f.modality_id === null) };
     const next = reconcileDraft(without, draft);
     expect(next.participants.self.responses).toEqual({ shirt_size: "M" });
+  });
+
+  // P2-G8 / F2: the saved draft arrives after an async account lookup; it used to replace whatever the buyer did meanwhile.
+  test("restoring a saved draft fills an untouched screen but never overrides what the buyer already chose", () => {
+    const ctx = baseContext();
+    // Saved by an earlier visit when only 10K was open (auto-selected); now both modalities are open.
+    const saved = setCategory(setModality(ctx, initialDraft(ctx), "self", ID.m10k), "self", ID.catLibre);
+    const untouched = initialDraft(ctx);
+    expect(untouched.participants.self.modalityId).toBeNull();
+    expect(restoreSavedDraft(ctx, untouched, saved).participants.self.modalityId).toBe(ID.m10k);
+
+    const chose5k = setModality(ctx, untouched, "self", ID.m5k);
+    expect(restoreSavedDraft(ctx, chose5k, saved)).toBe(chose5k);
+    const typed = setResponse(untouched, "self", "shirt_size", "M");
+    expect(restoreSavedDraft(ctx, typed, saved)).toBe(typed);
+    const unticked = toggleCandidate(ctx, untouched, "self", false);
+    expect(restoreSavedDraft(ctx, unticked, saved)).toBe(unticked);
+  });
+
+  test("a restored selection that is no longer valid is still dropped (reconcile runs on the saved draft)", () => {
+    const ctx = baseContext();
+    const saved = setCategory(setModality(ctx, initialDraft(ctx), "self", ID.m10k), "self", ID.catLibre);
+    const closed = { ...ctx, modalities: ctx.modalities.map((m) => (m.modality_id === ID.m10k ? { ...m, registrable: false, unavailable_reason: "SOLD_OUT" as const, availability_state: "SOLD_OUT" as const } : m)) };
+    const restored = restoreSavedDraft(closed, initialDraft(closed), saved);
+    expect(restored.participants.self.modalityId).toBe(ID.m5k);
+    expect(restored.participants.self.categoryId).toBeNull();
   });
 
   test("changing the modality prunes answers of the previous modality's form and resets the category", () => {
