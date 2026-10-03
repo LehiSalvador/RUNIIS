@@ -1,9 +1,13 @@
 import React from "react";
 import Link from "next/link";
+import { availableLinks } from "@/components/shell/nav-availability";
 import { Wordmark } from "@/components/shell/wordmark";
 import { Container } from "@/components/shell/container";
 
-const FOOTER_GROUPS = [
+/** Every planned footer entry; only those whose route is built are rendered (nav-availability.ts). */
+type FooterLink = { readonly href: string; readonly label: string };
+
+const FOOTER_CANDIDATES: readonly { readonly label: string; readonly links: readonly FooterLink[] }[] = [
   {
     label: "Explora",
     links: [
@@ -20,7 +24,12 @@ const FOOTER_GROUPS = [
       { href: "/legal/privacidad", label: "Aviso de privacidad" },
     ],
   },
-] as const;
+];
+
+export const FOOTER_GROUPS = FOOTER_CANDIDATES.map((group) => ({
+  label: group.label,
+  links: availableLinks(group.links),
+}));
 
 /** ui-spec §4.1 footer: an ink-surface section (§2.2) with nav groups, legal links, contact and the
  * repeated small wordmark; links use paper/80 on ink and a lime focus ring via `.surface-ink`. */

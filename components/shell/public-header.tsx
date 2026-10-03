@@ -7,6 +7,7 @@ import { Menu } from "lucide-react";
 import { cn } from "@/lib/client/cn";
 import { isNavItemActive } from "@/lib/client/nav";
 import { fetchSessionChipState, type SessionChipState } from "@/lib/client/session-chip";
+import { availableLinks } from "@/components/shell/nav-availability";
 import { Wordmark } from "@/components/shell/wordmark";
 import { Container } from "@/components/shell/container";
 import { Button } from "@/components/ui/button";
@@ -15,12 +16,15 @@ import { Avatar } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Drawer, DrawerContent, DrawerTrigger } from "@/components/ui/drawer";
 
-export const PUBLIC_NAV_LINKS = [
+/** Every planned primary-nav entry; only those whose route is built are rendered (nav-availability.ts). */
+const PUBLIC_NAV_CANDIDATES = [
   { href: "/eventos", label: "Eventos" },
   { href: "/ranking", label: "Ranking" },
   { href: "/runiis", label: "RUNIIS" },
   { href: "/contacto", label: "Contacto" },
 ] as const;
+
+export const PUBLIC_NAV_LINKS = availableLinks(PUBLIC_NAV_CANDIDATES);
 
 function useSessionChip(): SessionChipState {
   const [state, setState] = React.useState<SessionChipState>({ status: "loading" });
