@@ -6,7 +6,7 @@ import { renderPassQrPng } from "../passes/credentials";
 import { getServerEnv } from "../../env";
 import { toAppError } from "../../http/errors";
 import { logEvent } from "../../log";
-import { dispatchQuotaPool, providerForRecipient } from "../../providers/email";
+import { allowlistClaimFilter, dispatchQuotaPool, isSuppressedByAllowlist, providerForRecipient } from "../../providers/email";
 import type { OutboundEmail } from "../../providers/email";
 import { callRpc } from "../../rpc";
 import { backoffRetryAt } from "../../workers/outbox/backoff";
@@ -39,17 +39,21 @@ const claimedMessagesSchema = z.array(claimedMessageSchema);
 const tokenResultSchema = z.object({ purpose: z.string().nullable(), expires_at: z.string().optional() });
 const completeAttemptResultSchema = z.object({ applied: z.boolean(), status: z.string().optional() });
 
-export type CommunicationDispatchSummary = { claimed: number; accepted: number; retried: number; failed: number; blocked: number };
+export type CommunicationDispatchSummary = { claimed: number; accepted: number; retried: number; failed: number; blocked: number; suppressed: number };
 
 /**
  * Claims due `communication_message` rows for the current delivery-mode quota pool, renders each
  * against its template, embeds the recipient's own pass QR when the template calls for it (A3:
  * rendered here, never persisted), mints unsubscribe/confirmation action tokens (SEC-082/084), sends
  * through the resolved provider and reports the outcome back to the SQL claim (Master §147-148).
+ *
+ * P2-G9: in `allowlist` mode with no explicit capture sink the claim carries the allowlist, so SQL terminally
+ * CANCELS (`NOT_ALLOWLISTED`) every other recipient before reserving quota: they are never transported, never
+ * retried and never counted against the provider's daily usage. Those rows are not returned by the claim.
  */
 export async function runCommunicationDispatch(system: SupabaseClient, options: { limit?: number } = {}): Promise<CommunicationDispatchSummary> {
   const env = getServerEnv();
-  const summary: CommunicationDispatchSummary = { claimed: 0, accepted: 0, retried: 0, failed: 0, blocked: 0 };
+  const summary: CommunicationDispatchSummary = { claimed: 0, accepted: 0, retried: 0, failed: 0, blocked: 0, suppressed: 0 };
   const pool = dispatchQuotaPool(env);
   if (pool === null) {
     logEvent("error", "communication_dispatch_refused", { reason: "EMAIL_DELIVERY_MODE unset in production" });
@@ -59,7 +63,7 @@ export async function runCommunicationDispatch(system: SupabaseClient, options: 
   const claimed = await callRpc(
     system,
     "claim_communication_messages",
-    { p_worker: DISPATCH_WORKER_ID, p_provider: pool, p_limit: options.limit ?? DEFAULT_LIMIT, p_lease_seconds: LEASE_SECONDS },
+    { p_worker: DISPATCH_WORKER_ID, p_provider: pool, p_limit: options.limit ?? DEFAULT_LIMIT, p_lease_seconds: LEASE_SECONDS, p_allowlist: allowlistClaimFilter(env) },
     claimedMessagesSchema,
   );
   summary.claimed = claimed.length;
@@ -69,19 +73,21 @@ export async function runCommunicationDispatch(system: SupabaseClient, options: 
     if (outcome === "ACCEPTED") summary.accepted += 1;
     else if (outcome === "RETRYABLE") summary.retried += 1;
     else if (outcome === "BLOCKED") summary.blocked += 1;
+    else if (outcome === "BLOCKED_BY_POLICY") summary.suppressed += 1;
     else summary.failed += 1;
   }
   return summary;
 }
 
 type ClaimedMessage = z.output<typeof claimedMessageSchema>;
+type DispatchOutcome = "ACCEPTED" | "RETRYABLE" | "PERMANENT" | "BLOCKED" | "BLOCKED_BY_POLICY";
 
 async function dispatchOne(
   system: SupabaseClient,
   message: ClaimedMessage,
   pool: "brevo" | "capture",
   appBaseUrl: string,
-): Promise<"ACCEPTED" | "RETRYABLE" | "PERMANENT" | "BLOCKED"> {
+): Promise<DispatchOutcome> {
   try {
     const schema = message.variable_schema as TemplateVariableSchema;
     const systemVars: Record<string, unknown> = {};
@@ -98,6 +104,17 @@ async function dispatchOne(
     const resolved = resolveTemplateVariables(schema, message.variables, systemVars, appBaseUrl);
     const html = renderTemplate(message.html_template, resolved, { html: true });
     const text = renderTemplate(message.text_template, resolved, { html: false });
+
+    // Defence in depth for the SQL allowlist filter (env changed between claim and send): terminal, no transport.
+    if (isSuppressedByAllowlist(message.to_email, getServerEnv())) {
+      return await complete(system, message, pool, {
+        outcome: "BLOCKED_BY_POLICY",
+        provider: pool,
+        providerMessageId: null,
+        errorCode: "NOT_ALLOWLISTED",
+        retryAt: null,
+      });
+    }
 
     const transport = providerForRecipient(message.to_email);
     if (!transport) {
@@ -214,8 +231,8 @@ async function complete(
   system: SupabaseClient,
   message: ClaimedMessage,
   provider: "brevo" | "capture",
-  args: { outcome: "ACCEPTED" | "RETRYABLE" | "PERMANENT"; provider: string; providerMessageId: string | null; errorCode: string | null; retryAt: Date | null },
-): Promise<"ACCEPTED" | "RETRYABLE" | "PERMANENT" | "BLOCKED"> {
+  args: { outcome: "ACCEPTED" | "RETRYABLE" | "PERMANENT" | "BLOCKED_BY_POLICY"; provider: string; providerMessageId: string | null; errorCode: string | null; retryAt: Date | null },
+): Promise<DispatchOutcome> {
   const result = await callRpc(
     system,
     "complete_communication_attempt",

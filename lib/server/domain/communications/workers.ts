@@ -24,6 +24,7 @@ export const outboxDispatchWorker: WorkerHandler = async () => {
     messages_retried: dispatch.retried,
     messages_failed: dispatch.failed,
     messages_blocked: dispatch.blocked,
+    messages_suppressed: dispatch.suppressed,
   };
 };
 

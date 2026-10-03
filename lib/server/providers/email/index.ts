@@ -6,7 +6,14 @@ import { selectEmailProvider } from "./delivery-mode";
 import type { EmailProvider } from "./types";
 
 export type { EmailProvider, EmailSendResult, OutboundEmail } from "./types";
-export { dispatchQuotaPool, resolveEmailDeliveryMode, selectEmailProvider, type EmailDeliveryMode } from "./delivery-mode";
+export {
+  allowlistClaimFilter,
+  dispatchQuotaPool,
+  isSuppressedByAllowlist,
+  resolveEmailDeliveryMode,
+  selectEmailProvider,
+  type EmailDeliveryMode,
+} from "./delivery-mode";
 
 let brevo: EmailProvider | undefined;
 let capture: EmailProvider | undefined;

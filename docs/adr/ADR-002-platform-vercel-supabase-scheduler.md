@@ -114,7 +114,10 @@ bound staging to a Netlify branch deploy.
 - Email: `EMAIL_DELIVERY_MODE` is `live | allowlist | capture`; unset resolves to `capture` outside production and to
   refuse-to-send in production; `capture` is also refused in production (`lib/server/providers/email/delivery-mode.ts`).
   `EMAIL_ALLOWLIST` is required with `allowlist`. The owner account address is configured in the environment, never in
-  documents.
+  documents. In `allowlist` without an explicit `MAILPIT_URL` (a deployed staging has no capture sink) a non-allowlisted
+  recipient is never transported: the dispatch claim cancels it terminally (`CANCELED`, `last_error = NOT_ALLOWLISTED`)
+  before reserving quota, so it is not retried and does not count against the Brevo daily usage; only allowlisted mail
+  reaches Brevo.
 - Provider configuration (Vercel environment and domains, Supabase Auth settings, Vault values) is executed by the
   orchestrator and logged secret-free, because SalvaOps typed capabilities do not cover these writes.
 - Supabase Auth per environment: Site URL and redirect allowlist must include the host of that environment
