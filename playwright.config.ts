@@ -1,5 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
-import { describeE2eEnv, resolveE2eEnv } from "./tests/e2e/support/env";
+import { describeE2eEnv, localPort, resolveE2eEnv } from "./tests/e2e/support/env";
 
 const e2e = resolveE2eEnv();
 // One run id for the whole run: workers re-evaluate this file but inherit the variable.
@@ -38,7 +38,7 @@ export default defineConfig({
   webServer: e2e.remote
     ? undefined
     : {
-        command: "pnpm exec next dev -p 3100",
+        command: `pnpm exec next dev -p ${localPort()}`,
         url: e2e.baseURL,
         reuseExistingServer: true,
         timeout: 120_000,

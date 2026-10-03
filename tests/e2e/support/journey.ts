@@ -172,6 +172,14 @@ async function openSessionWithRetry(script: FixtureScript, env: Record<string, s
   throw lastError;
 }
 
+/**
+ * Every journey of a worker registers into the same shared edition. With one worker (mobile, tablet) that is the whole
+ * suite: about 20 registrations of the 5K, which sold the old capacity of 15 out near the end of the run (QA F5: the 5K
+ * radio was disabled). The script's maximum keeps the shared edition from ever being the limiting factor; races that
+ * need a scarce place use their own capacity-1 edition (createEdition).
+ */
+const SHARED_EDITION_CAPACITY = 50;
+
 async function buildWorld(projectName: string, workerIndex: number): Promise<{ world: World; teardown: () => Promise<void> }> {
   const e2e = e2eEnv();
   const script = await loadFixtureScript();
@@ -193,7 +201,7 @@ async function buildWorld(projectName: string, workerIndex: number): Promise<{ w
     edition(key) {
       let pending = shared.get(key);
       if (!pending) {
-        pending = create(key, key === "free" ? "FREE" : "EXTERNAL_WHATSAPP", 15);
+        pending = create(key, key === "free" ? "FREE" : "EXTERNAL_WHATSAPP", SHARED_EDITION_CAPACITY);
         shared.set(key, pending);
       }
       return pending;

@@ -34,7 +34,9 @@ test("pending request: server-time countdown, WhatsApp handoff, honest copy, can
   await expect(dialog).toContainText("No se puede deshacer");
   await dialog.getByLabel("Motivo (opcional)").fill("Ya no podré asistir");
   await dialog.getByRole("button", { name: "Sí, cancelar solicitud" }).click();
-  await expect(page.getByText("Cancelada por ti", { exact: true })).toBeVisible();
+  // The status shows twice on purpose (header badge and the request stage detail): scope each one to its region.
+  await expect(page.getByRole("main").locator("header").getByText("Cancelada por ti", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("request-stages").getByText("Cancelada por ti", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Cancelar solicitud" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: /Completar por WhatsApp/ })).toHaveCount(0);
   expect(unexpectedConsoleErrors(consoleErrors)).toEqual([]);

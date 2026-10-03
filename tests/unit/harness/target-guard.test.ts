@@ -26,6 +26,13 @@ describe("E2E target guard (H2P2-06)", () => {
     }
   });
 
+  test("E2E_LOCAL_PORT moves the local dev server only: still local mode with the local DB, loopback only, bounded", () => {
+    expect(resolveE2eEnv({ E2E_LOCAL_PORT: "3102" })).toMatchObject({ remote: false, localDb: true, baseURL: "http://127.0.0.1:3102" });
+    expect(resolveE2eEnv({}).baseURL).toBe("http://127.0.0.1:3100");
+    for (const bad of ["80", "70000", "abc", "3102x"]) expect(() => resolveE2eEnv({ E2E_LOCAL_PORT: bad }), bad).toThrow(E2eConfigError);
+    expect(resolveE2eEnv({ E2E_BASE_URL: STAGING_URL, E2E_LOCAL_PORT: "3102" }).baseURL).toBe(STAGING_URL);
+  });
+
   test("staging is accepted, with or without a path, and the server pair for the staging project or the local stack", () => {
     expect(resolveE2eEnv({ E2E_BASE_URL: `${STAGING_URL}/some/path?x=1` }).baseURL).toBe(STAGING_URL);
     expect(resolveE2eEnv({ E2E_BASE_URL: STAGING_URL, E2E_SUPABASE_URL: STAGING_SUPABASE_URL, E2E_SUPABASE_SERVER_KEY: KEY }).adminOtp).toEqual({ url: STAGING_SUPABASE_URL, key: KEY });

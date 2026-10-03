@@ -46,6 +46,18 @@ export type E2eEnv = {
 };
 
 export const DEFAULT_LOCAL_BASE_URL = "http://127.0.0.1:3100";
+/** Local mode only: E2E_LOCAL_PORT lets one agent run its own dev server beside the shared one on 3100. */
+export function localPort(env: Record<string, string | undefined> = process.env): number {
+  const raw = env.E2E_LOCAL_PORT?.trim();
+  if (!raw) return 3100;
+  const port = Number.parseInt(raw, 10);
+  if (!/^\d+$/.test(raw) || port < 1024 || port > 65535) throw new E2eConfigError("E2E_LOCAL_PORT must be 1024-65535");
+  return port;
+}
+function localBaseUrl(env: Record<string, string | undefined>): string {
+  const port = localPort(env);
+  return port === 3100 ? DEFAULT_LOCAL_BASE_URL : `http://127.0.0.1:${port}`;
+}
 /** The only non-loopback targets a remote E2E run may touch (same values as scripts/ops/staging-qa-fixtures.mjs). */
 export const STAGING_HOST = "staging.runiismty.com";
 export const STAGING_SUPABASE_REF = "brxdgvcfykmsqmhsvgxl";
@@ -89,7 +101,7 @@ export function resolveE2eEnv(env: Record<string, string | undefined> = process.
   const rawBase = clean(env.E2E_BASE_URL);
   const remote = rawBase !== undefined;
 
-  let baseURL = DEFAULT_LOCAL_BASE_URL;
+  let baseURL = localBaseUrl(env);
   let loopback = true;
   if (rawBase !== undefined) {
     let parsed: URL;

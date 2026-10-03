@@ -86,10 +86,20 @@ test.describe("SEO files", () => {
     const slug = openEditionSlug();
     if (slug) expect(body).toContain(`/eventos/${slug}</loc>`);
     if (hasSeededEditions()) expect(body).toContain(`/eventos/${SEED.finished}</loc>`);
-    // Oracle = the rendered page, not the live API: the sitemap and the legal pages share one cache tag,
-    // while the API reads the DB directly and moves whenever another suite publishes/unpublishes a version.
-    const page = await (await request.get("/legal/terminos")).text();
-    expect(body.includes("/legal/terminos")).toBe(!page.includes("Documento en preparación"));
+    // Oracle = the rendered page, derived at runtime, never a fixed expectation or the live API: the sitemap and the
+    // legal pages share one cache tag while the API reads the DB directly. Another worker's legal publication (or a
+    // db:reset) can land between the two reads, so the pair is re-read until both come from the same state; the rule
+    // itself is never relaxed: listed if and only if the page is published.
+    await expect
+      .poll(
+        async () => {
+          const sitemap = await (await request.get("/sitemap.xml")).text();
+          const page = await (await request.get("/legal/terminos")).text();
+          return sitemap.includes("/legal/terminos") === !page.includes("Documento en preparación");
+        },
+        { timeout: 30_000, intervals: [250, 500, 1_000, 2_000] },
+      )
+      .toBe(true);
   });
 
   test("social images are generated for the site and each Edition", async ({ request }, testInfo) => {

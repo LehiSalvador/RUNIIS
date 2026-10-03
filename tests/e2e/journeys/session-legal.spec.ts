@@ -199,9 +199,14 @@ test("Legal re-acceptance (a new version): the banner, the acceptance screen, th
   const accept = page.getByRole("button", { name: /Aceptar y continuar/ });
   await expect(box).toHaveAttribute("aria-checked", "false");
   await expect(accept).toBeDisabled();
-  await panel.getByRole("button", { name: /Leer/ }).first().click();
+  const read = panel.getByRole("button", { name: /Leer/ }).first();
+  await read.click();
   await expect(page.getByRole("dialog").getByTestId("legal-document-text")).toBeVisible();
   await page.keyboard.press("Escape");
+  // The dialog gives focus back to its trigger once its exit animation ends: wait for that before moving focus, or
+  // (under load) the late return lands after box.focus() and the next Space re-opens the dialog on the trigger.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(read).toBeFocused();
   await expect(box).toHaveAttribute("aria-checked", "false");
   await box.focus();
   await page.keyboard.press("Space");
