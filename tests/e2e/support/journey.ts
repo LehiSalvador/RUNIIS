@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import type { Browser, BrowserContext, Locator, Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { createReadyUser, resetAuthIpBuckets, usesAdminOtp, type AccountUser, type PersonInput } from "./account";
+import { altchaPayloadFor } from "./altcha";
 import { scanForSeriousViolations } from "./axe";
 import { protectBypass } from "./bypass";
 import { BYPASS_HEADER, e2eEnv, type E2eEnv } from "./env";
@@ -548,6 +549,9 @@ export async function registerSelfViaApi(page: Page, slug: string, modalityIndex
       responses[field.field_key] = field.field_type === "SELECT" ? field.options_config.options![0].value : field.field_type === "BOOLEAN" ? true : field.field_type === "NUMBER" ? 1 : "x";
     }
   }
+  // OD-P2-01: a new account on a WhatsApp Edition (remote targets cannot age fixture accounts) must pass the real challenge; locally the
+  // account is established and the probe says "not required", so nothing is added.
+  const altcha = await altchaPayloadFor(page.request, context.edition.edition_id);
   const created = await page.request.post("/api/v1/registration-requests", {
     data: {
       edition_id: context.edition.edition_id,
@@ -561,6 +565,7 @@ export async function registerSelfViaApi(page: Page, slug: string, modalityIndex
         },
       ],
       legal_acceptances: self.acceptance.missing_document_version_ids.map((id) => ({ participant_index: 0, legal_document_version_id: id })),
+      ...(altcha ? { altcha } : {}),
     },
     headers: { "Idempotency-Key": `qa-e2e-${Date.now()}-${Math.random().toString(36).slice(2, 8)}` },
   });

@@ -40,6 +40,18 @@ export function psql(text: string): string {
   return result.stdout.trim();
 }
 
+/**
+ * OD-P2-01: an EXTERNAL_WHATSAPP request from an account younger than 24 h needs an ALTCHA challenge. Fixture accounts that are not the
+ * subject of that rule stand for ESTABLISHED users: locally the account is backdated through the same SQL lever the integration helpers
+ * use (`ageAccount`). Remote targets have no such lever (see support/altcha.ts), so there the account stays new and the journeys pass the
+ * real challenge. Pass `fresh: true` where the new-account rule itself is under test.
+ */
+export function ageFixtureAccount(email: string, hours = 72): void {
+  if (!e2eEnv().localDb) return;
+  if (!/^[a-z0-9.@-]+$/.test(email)) throw new Error("refusing to age an account whose address is not a plain fixture address");
+  psql(`update auth.users set created_at = now() - interval '${Math.trunc(hours)} hours' where lower(email) = lower('${email}')`);
+}
+
 export function uniqueEmail(label: string): string {
   if (e2eEnv().adminOtp) return fixtureEmailFor(label);
   return `f2-${label}-${randomUUID().slice(0, 12)}@example.test`;
@@ -83,9 +95,10 @@ export async function fetchOtpCode(email: string, timeoutMs = 45_000): Promise<s
 /**
  * Real OTP sign-in through the app API; the page's browser context receives the session cookies.
  * Admin-OTP mode skips POST /auth/otp (no email is sent) and verifies the generated code directly;
- * a 429 on verify (auth.verify.ip: 30 per 10 min per client IP) is waited out a few times.
+ * a 429 on verify (auth.verify.ip: 30 per 10 min per client IP) is waited out a few times. Locally the new account is then backdated
+ * (OD-P2-01, see ageFixtureAccount) unless `fresh: true`.
  */
-export async function signInViaApi(rawRequest: APIRequestContext, email: string): Promise<void> {
+export async function signInViaApi(rawRequest: APIRequestContext, email: string, options: { fresh?: boolean } = {}): Promise<void> {
   // safeApi: a transport failure reports method + path + reason, never Playwright's header-laden call log (H2P2-04).
   const request = safeApi(rawRequest);
   resetAuthIpBuckets();
@@ -103,6 +116,7 @@ export async function signInViaApi(rawRequest: APIRequestContext, email: string)
     verify = await request.post("/api/v1/auth/verify", { data: { email, code }, headers: { Origin: origin } });
   }
   expect(verify.status(), "OTP verify").toBe(200);
+  if (!options.fresh) ageFixtureAccount(email);
 }
 
 export type PersonInput = {
@@ -161,9 +175,9 @@ export async function postOnboarding(rawRequest: APIRequestContext, person: Pers
 }
 
 /** Signed-in, READY account (onboarding done through the real API). */
-export async function createReadyUser(page: Page, label: string, person?: Partial<PersonInput>): Promise<AccountUser> {
+export async function createReadyUser(page: Page, label: string, person?: Partial<PersonInput>, options: { fresh?: boolean } = {}): Promise<AccountUser> {
   const email = uniqueEmail(label);
-  await signInViaApi(page.request, email);
+  await signInViaApi(page.request, email, options);
   const name = person?.full_name ?? `Persona ${label} ${randomUUID().slice(0, 4)}`;
   const onboarding = await postOnboarding(page.request, { ...adultPerson(name), ...person, full_name: name });
   expect(onboarding.status(), "onboarding").toBe(200);

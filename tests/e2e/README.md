@@ -160,6 +160,25 @@ E2E_BASE_URL=https://staging.runiismty.com E2E_VERCEL_BYPASS=... E2E_SUPABASE_UR
 * Local rehearsal of remote mode: `E2E_BASE_URL=http://127.0.0.1:3100` (or another loopback port; start the server yourself, with
   `APP_BASE_URL` set to the same origin because the harness' API sign-in sends an `Origin` header the app compares with it).
 
+### Anti-hoarding challenge (P3-D2, OD-P2-01)
+
+An `EXTERNAL_WHATSAPP` request from an account younger than 24 h (server time) needs a solved ALTCHA challenge; FREE Editions and older
+accounts never see one. The harness keeps the rule intact and never bypasses it:
+
+* **Local (Docker DB):** `signInViaApi` / `createReadyUser` backdate the new fixture account 72 h through the same SQL lever the integration
+  helpers use (`ageFixtureAccount` in `support/account.ts`), so every journey that is not about the challenge is never challenged. Pass
+  `{ fresh: true }` to keep the account new.
+* **Remote (staging):** nothing can age an account (GoTrue stamps `auth.users.created_at`; the harness holds only the Auth server key, never a SQL
+  path), so fixture accounts stay NEW and journeys pass the real challenge: the browser journeys through the widget on the review step, the
+  ones that create the request through the API through `altchaPayloadFor` (`support/altcha.ts`: probe, solve, send `altcha`). No journey
+  skips and nothing is reached by a client-side shortcut. Each WhatsApp request costs one probe and one solve (about 1-3 s); the 5-per-10-minutes
+  creation limit is never spent on a failed first attempt because the UI probes before submitting.
+* `journeys/challenge.spec.ts` (every project): a brand-new account passes the challenge and creates the request (accessible `aria-live` status,
+  one probe, one POST, `altcha` in the same body, nothing stored in the tab); an established account on WhatsApp and any FREE Edition never see the
+  panel and never send `altcha` (FREE does not even probe); the invalid payload shows the Spanish error state, prepares a fresh challenge and the
+  retry succeeds with the SAME Idempotency-Key (local); a page whose probe said "not required" is rescued by the `422 captcha_required`, solves the
+  challenge inside it and resubmits with the same key (local); keyboard-only submit.
+
 ### What each journey proves (and how it stays off the owner's data)
 
 * **Last slot race**: two buyers reach the review step on a capacity-1 edition, press submit together and exactly one gets `201`;
