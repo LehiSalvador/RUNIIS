@@ -2,7 +2,7 @@
 
 import React from "react";
 import { useRouter } from "next/navigation";
-import { KeyRound, PackageCheck, Undo2, Users } from "lucide-react";
+import { KeyRound, PackageCheck, Shirt, Undo2, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
 import { toast } from "@/components/ui/use-toast";
@@ -12,13 +12,25 @@ import { Panel } from "@/components/admin/panel";
 import { AdminBadge } from "@/components/admin/status-badges";
 import { CheckField, SelectField, TextareaField } from "@/components/admin/events/fields";
 import { FormDialog } from "@/components/admin/events/form-dialog";
-import { KIT_STATUS_LABEL, validateReason } from "@/components/admin/raceday/kit-logic";
+import {
+  KIT_STATUS_LABEL,
+  buildSizeChange,
+  canChangeSize,
+  canReverseDelivery,
+  reversePickupPath,
+  sizeChangePath,
+  sizeChoices,
+  validateReason,
+  type ParticipantKitRef,
+} from "@/components/admin/raceday/kit-logic";
 import { OUTCOME_SPEC, isScanOutcome } from "@/components/scanner/outcomes";
 
 /**
- * Kit Center, in-person half: find a participant and hand over the kit, replace a lost or compromised QR, reverse a delivery. All
- * three go through the existing commands; the screen never shows a delivery as done before the server answers `outcome: VALID`
- * (a pickup answers 200 with one of the 11 outcomes, so "ok" alone is not "delivered").
+ * Kit Center, in-person half: find a participant and hand over the kit, change their size, replace a lost or compromised QR, reverse a
+ * delivery. All of them go through the existing commands; the screen never shows a delivery as done before the server answers
+ * `outcome: VALID` (a pickup answers 200 with one of the 11 outcomes, so "ok" alone is not "delivered"). The size change and the
+ * reversal read their target ids from the participant row itself (`kit_allocation_id`, `kit_pickup_id`), so they work on any
+ * delivery, not only one made in this page session; after each command the page is re-read from the server.
  */
 export type KitParticipant = {
   registration_id: string;
@@ -27,12 +39,15 @@ export type KitParticipant = {
   modality: { name: string };
   is_minor: boolean;
   pass: { participant_pass_id: string; public_code: string; status: string; has_active_credential: boolean } | null;
-  kit: { status: string; kit_variant_id: string; variant_label: string } | null;
+  kit: ParticipantKitRef | null;
 };
 
 export type ActiveKit = { kit_definition_id: string; name: string };
 
-type Delivery = { kit_pickup_id: string; name: string; registration_number: string; kit: string };
+/** The sizes of every kit of the Edition, for the size-change dialog. */
+export type KitSizes = { kit_definition_id: string; variants: readonly { kit_variant_id: string; label: string; status: string }[] };
+
+type Reversal = { kit_pickup_id: string; name: string };
 
 const KIT_TONE: Record<string, "success" | "info" | "warning" | "neutral"> = {
   DELIVERED: "success",
@@ -46,17 +61,19 @@ export function KitParticipants({
   rows,
   editionId,
   activeKits,
+  kitSizes,
   locked,
 }: {
   rows: KitParticipant[];
   editionId: string;
   activeKits: readonly ActiveKit[];
+  kitSizes: readonly KitSizes[];
   locked: boolean;
 }) {
   const [pickup, setPickup] = React.useState<KitParticipant | null>(null);
   const [replace, setReplace] = React.useState<KitParticipant | null>(null);
-  const [reverse, setReverse] = React.useState<Delivery | null>(null);
-  const [deliveries, setDeliveries] = React.useState<Delivery[]>([]);
+  const [resize, setResize] = React.useState<KitParticipant | null>(null);
+  const [reverse, setReverse] = React.useState<Reversal | null>(null);
   const router = useRouter();
 
   const columns = React.useMemo<DataTableColumn<KitParticipant>[]>(
@@ -117,6 +134,18 @@ export function KitParticipants({
                   Entregar kit<span className="sr-only"> a {row.full_name ?? row.registration_number}</span>
                 </Button>
               ) : null}
+              {!locked && canChangeSize(row.kit) ? (
+                <Button size="sm" variant="secondary" onClick={() => setResize(row)}>
+                  <Shirt className="size-4" aria-hidden="true" />
+                  Cambiar talla<span className="sr-only"> de {row.full_name ?? row.registration_number}</span>
+                </Button>
+              ) : null}
+              {!locked && canReverseDelivery(row.kit) && row.kit?.kit_pickup_id ? (
+                <Button size="sm" variant="secondary" onClick={() => setReverse({ kit_pickup_id: row.kit!.kit_pickup_id!, name: row.full_name ?? row.registration_number })}>
+                  <Undo2 className="size-4" aria-hidden="true" />
+                  Revertir entrega<span className="sr-only"> de {row.full_name ?? row.registration_number}</span>
+                </Button>
+              ) : null}
               {!locked && row.pass && row.pass.status === "ACTIVE" ? (
                 <Button size="sm" variant="secondary" onClick={() => setReplace(row)}>
                   <KeyRound className="size-4" aria-hidden="true" />
@@ -126,26 +155,6 @@ export function KitParticipants({
             </div>
           )}
         />
-
-        {deliveries.length > 0 ? (
-          <section aria-label="Entregas hechas en esta pantalla" data-testid="session-deliveries">
-            <h3 className="text-body font-bold text-ink">Entregas hechas en esta pantalla</h3>
-            <p className="mb-2 text-caption text-ink-60">Puedes revertir una entrega solo desde aquí y mientras no recargues la página: el servidor identifica la entrega por el comprobante que acaba de devolver.</p>
-            <ul className="divide-y divide-divider rounded-card border border-divider">
-              {deliveries.map((delivery) => (
-                <li key={delivery.kit_pickup_id} className="flex flex-wrap items-center justify-between gap-2 px-4 py-2">
-                  <span className="text-body-sm">
-                    <span className="font-semibold text-ink">{delivery.name}</span> · inscripción {delivery.registration_number} · {delivery.kit}
-                  </span>
-                  <Button size="sm" variant="secondary" onClick={() => setReverse(delivery)}>
-                    <Undo2 className="size-4" aria-hidden="true" />
-                    Revertir entrega<span className="sr-only"> de {delivery.name}</span>
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
       </div>
 
       {pickup ? (
@@ -154,10 +163,11 @@ export function KitParticipants({
           editionId={editionId}
           participant={pickup}
           kits={activeKits}
-          onDelivered={(delivery) => setDeliveries((current) => [delivery, ...current])}
           onClose={() => setPickup(null)}
         />
       ) : null}
+
+      {resize && resize.kit ? <SizeDialog key={resize.registration_id} participant={resize} kit={resize.kit} kits={kitSizes} onClose={() => setResize(null)} /> : null}
 
       <ConfirmDialog
         open={replace !== null}
@@ -184,10 +194,8 @@ export function KitParticipants({
         confirmLabel="Revertir entrega"
         tone="danger"
         reason={{ label: "Motivo", required: true, minLength: 3 }}
-        onConfirm={({ reason, idempotencyKey }) => apiFetch(`/api/v1/admin/kits/pickup/${reverse!.kit_pickup_id}/reverse`, { method: "POST", body: { reason }, idempotencyKey })}
+        onConfirm={({ reason, idempotencyKey }) => apiFetch(reversePickupPath(reverse!.kit_pickup_id), { method: "POST", body: { reason }, idempotencyKey })}
         onDone={() => {
-          const undone = reverse;
-          setDeliveries((current) => current.filter((item) => item.kit_pickup_id !== undone?.kit_pickup_id));
           toast({ tone: "success", title: "Entrega revertida" });
           router.refresh();
         }}
@@ -202,13 +210,11 @@ function PickupDialog({
   editionId,
   participant,
   kits,
-  onDelivered,
   onClose,
 }: {
   editionId: string;
   participant: KitParticipant;
   kits: readonly ActiveKit[];
-  onDelivered: (delivery: Delivery) => void;
   onClose: () => void;
 }) {
   const [kitId, setKitId] = React.useState(kits.length === 1 ? kits[0].kit_definition_id : "");
@@ -238,17 +244,7 @@ function PickupDialog({
     if (!result.ok) return result;
 
     const outcome = result.data.outcome;
-    if (outcome === "VALID") {
-      if (result.data.kit_pickup_id) {
-        onDelivered({
-          kit_pickup_id: result.data.kit_pickup_id,
-          name: participant.full_name ?? participant.registration_number,
-          registration_number: participant.registration_number,
-          kit: kits.find((kit) => kit.kit_definition_id === kitId)?.name ?? "Kit",
-        });
-      }
-      return result;
-    }
+    if (outcome === "VALID") return result;
     // A 200 whose outcome is not VALID means nothing was delivered: show why, keep the dialog open.
     setNotice(isScanOutcome(outcome) ? `${OUTCOME_SPEC[outcome].label}. ${OUTCOME_SPEC[outcome].action}` : "El servidor respondió algo inesperado y no se entregó nada. Actualiza la pantalla y vuelve a intentar.");
     return null;
@@ -288,6 +284,70 @@ function PickupDialog({
           {notice}
         </p>
       ) : null}
+    </FormDialog>
+  );
+}
+
+// ---- Size change ---------------------------------------------------------------------------------------------------------------
+
+function SizeDialog({ participant, kit, kits, onClose }: { participant: KitParticipant; kit: ParticipantKitRef; kits: readonly KitSizes[]; onClose: () => void }) {
+  const choices = React.useMemo(() => sizeChoices(kit, kits), [kit, kits]);
+  const [sizeId, setSizeId] = React.useState("");
+  const [reason, setReason] = React.useState("");
+  const [errors, setErrors] = React.useState<{ size?: string; reason?: string }>({});
+  const name = participant.full_name ?? participant.registration_number;
+
+  async function onSubmit({ idempotencyKey }: { idempotencyKey: string }): Promise<ApiResult<unknown> | null> {
+    const decision = buildSizeChange({ newVariantId: sizeId, currentVariantId: kit.kit_variant_id, choices, reason });
+    if (!decision.ok) {
+      setErrors(decision.errors);
+      return null;
+    }
+    setErrors({});
+    return apiFetch(sizeChangePath(kit.kit_allocation_id), { method: "POST", body: decision.body, idempotencyKey });
+  }
+
+  return (
+    <FormDialog
+      open
+      onOpenChange={(open) => (open ? undefined : onClose())}
+      title={`Cambiar la talla de ${name}`}
+      description={`Talla actual: ${kit.variant_label}. El servidor valida que la talla nueva tenga lugar antes de aplicarla.`}
+      submitLabel="Cambiar talla"
+      successMessage="Talla cambiada"
+      onSubmit={onSubmit}
+    >
+      {choices.length === 0 ? (
+        <p role="alert" className="text-body-sm text-danger">
+          Este kit no tiene otra talla activa. Agrega o activa una en el inventario.
+        </p>
+      ) : (
+        <SelectField
+          id="resize-size"
+          label="Talla nueva"
+          required
+          value={sizeId}
+          error={errors.size}
+          options={[{ value: "", label: "Elige una talla" }, ...choices.map((choice) => ({ value: choice.kit_variant_id, label: choice.label }))]}
+          onChange={(event) => {
+            setSizeId(event.target.value);
+            setErrors((current) => ({ ...current, size: undefined }));
+          }}
+        />
+      )}
+      <TextareaField
+        id="resize-reason"
+        label="Motivo"
+        required
+        value={reason}
+        error={errors.reason}
+        maxLength={500}
+        helperText="Queda como evidencia."
+        onChange={(event) => {
+          setReason(event.target.value);
+          setErrors((current) => ({ ...current, reason: undefined }));
+        }}
+      />
     </FormDialog>
   );
 }

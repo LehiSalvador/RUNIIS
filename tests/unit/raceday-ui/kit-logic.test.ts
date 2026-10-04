@@ -3,7 +3,10 @@ import {
   buildKitDefinitionBody,
   buildKitDefinitionPatch,
   buildVariantBody,
+  buildSizeChange,
   buildVariantPatch,
+  canChangeSize,
+  canReverseDelivery,
   emptyKitDefinition,
   emptyVariant,
   hasFieldErrors,
@@ -14,6 +17,9 @@ import {
   kitToValues,
   localInputToIso,
   parseCapacity,
+  reversePickupPath,
+  sizeChangePath,
+  sizeChoices,
   validateKitDefinition,
   validateReason,
   validateVariant,
@@ -157,5 +163,52 @@ describe("inventory", () => {
     expect(validateReason("  ")).toMatch(/obligatorio/);
     expect(validateReason("x".repeat(501))).toBeTruthy();
     expect(validateReason("Su hermano")).toBeUndefined();
+  });
+});
+
+describe("size change and reversal from the participant row (P3-Q D2)", () => {
+  const kit = { status: "ASSIGNED", kit_variant_id: "v-m", variant_label: "Talla M", kit_allocation_id: "a1", kit_definition_id: "k1", kit_pickup_id: null };
+  const kits = [
+    {
+      kit_definition_id: "k1",
+      variants: [
+        { kit_variant_id: "v-m", label: "Talla M", status: "ACTIVE" },
+        { kit_variant_id: "v-l", label: "Talla L", status: "ACTIVE" },
+        { kit_variant_id: "v-xl", label: "Talla XL", status: "INACTIVE" },
+      ],
+    },
+    { kit_definition_id: "k2", variants: [{ kit_variant_id: "v-other", label: "Única", status: "ACTIVE" }] },
+  ];
+
+  test("a size change is offered until the kit is delivered or canceled", () => {
+    expect(canChangeSize(null)).toBe(false);
+    for (const status of ["ASSIGNED", "READY", "EXCEPTION"]) expect(canChangeSize({ status })).toBe(true);
+    for (const status of ["DELIVERED", "CANCELED"]) expect(canChangeSize({ status })).toBe(false);
+  });
+
+  test("the choices are the other ACTIVE sizes of the same kit only", () => {
+    expect(sizeChoices(kit, kits)).toEqual([{ kit_variant_id: "v-l", label: "Talla L" }]);
+    expect(sizeChoices({ ...kit, kit_definition_id: "missing" }, kits)).toEqual([]);
+  });
+
+  test("the request needs a new, different size from the choices and a reason; the body is exactly what the API takes", () => {
+    const choices = sizeChoices(kit, kits);
+    expect(buildSizeChange({ newVariantId: "", currentVariantId: "v-m", choices, reason: "x" })).toMatchObject({ ok: false, errors: { size: expect.any(String) } });
+    expect(buildSizeChange({ newVariantId: "v-m", currentVariantId: "v-m", choices, reason: "x" })).toMatchObject({ ok: false, errors: { size: expect.any(String) } });
+    expect(buildSizeChange({ newVariantId: "v-other", currentVariantId: "v-m", choices, reason: "x" })).toMatchObject({ ok: false, errors: { size: expect.any(String) } });
+    expect(buildSizeChange({ newVariantId: "v-l", currentVariantId: "v-m", choices, reason: "  " })).toMatchObject({ ok: false, errors: { reason: expect.any(String) } });
+    expect(buildSizeChange({ newVariantId: "v-l", currentVariantId: "v-m", choices, reason: " Se equivocó de talla " })).toEqual({ ok: true, body: { new_kit_variant_id: "v-l", reason: "Se equivocó de talla" } });
+  });
+
+  test("a reversal needs a DELIVERED kit with an active pickup id", () => {
+    expect(canReverseDelivery({ status: "DELIVERED", kit_pickup_id: "p1" })).toBe(true);
+    expect(canReverseDelivery({ status: "DELIVERED", kit_pickup_id: null })).toBe(false);
+    expect(canReverseDelivery({ status: "ASSIGNED", kit_pickup_id: "p1" })).toBe(false);
+    expect(canReverseDelivery(null)).toBe(false);
+  });
+
+  test("paths address the allocation and the pickup by id", () => {
+    expect(sizeChangePath("a1")).toBe("/api/v1/admin/kits/allocations/a1/size");
+    expect(reversePickupPath("p1")).toBe("/api/v1/admin/kits/pickup/p1/reverse");
   });
 });

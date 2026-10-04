@@ -242,3 +242,63 @@ export const KIT_STATUS_LABEL: Record<string, string> = {
   EXCEPTION: "Con excepción",
   NONE: "Sin kit",
 };
+
+// ---- Size change and reversal from the participant row (P3-Q D2) -------------------------------------------------------------------
+
+/** The kit reference a participant row carries: the ids the two commands need (allocation for a size change, active pickup for a reversal). */
+export type ParticipantKitRef = {
+  status: string;
+  kit_variant_id: string;
+  variant_label: string;
+  kit_allocation_id: string;
+  kit_definition_id: string;
+  /** The active DELIVERED pickup; null before a delivery and after a reversal. */
+  kit_pickup_id: string | null;
+};
+
+export type SizeChoice = { kit_variant_id: string; label: string };
+
+/** The server refuses a size change on a delivered or canceled allocation (ALREADY_DELIVERED / ALLOCATION_CANCELED): do not offer it. */
+export function canChangeSize(kit: Pick<ParticipantKitRef, "status"> | null): boolean {
+  return kit !== null && kit.status !== "DELIVERED" && kit.status !== "CANCELED";
+}
+
+/** A delivery can be reversed only while it has an active pickup to point at. */
+export function canReverseDelivery(kit: Pick<ParticipantKitRef, "status" | "kit_pickup_id"> | null): boolean {
+  return kit !== null && kit.status === "DELIVERED" && kit.kit_pickup_id !== null;
+}
+
+/** The other ACTIVE sizes of the SAME kit (the server only accepts a variant of the allocation's own kit). Capacity is judged by the server. */
+export function sizeChoices(
+  kit: Pick<ParticipantKitRef, "kit_definition_id" | "kit_variant_id">,
+  kits: readonly { kit_definition_id: string; variants: readonly { kit_variant_id: string; label: string; status: string }[] }[],
+): SizeChoice[] {
+  const definition = kits.find((item) => item.kit_definition_id === kit.kit_definition_id);
+  if (!definition) return [];
+  return definition.variants
+    .filter((variant) => variant.status === "ACTIVE" && variant.kit_variant_id !== kit.kit_variant_id)
+    .map((variant) => ({ kit_variant_id: variant.kit_variant_id, label: variant.label }));
+}
+
+export type SizeChangeDecision =
+  | { ok: true; body: { new_kit_variant_id: string; reason: string } }
+  | { ok: false; errors: { size?: string; reason?: string } };
+
+export function buildSizeChange(input: { newVariantId: string; currentVariantId: string; choices: readonly SizeChoice[]; reason: string }): SizeChangeDecision {
+  const errors: { size?: string; reason?: string } = {};
+  if (!input.newVariantId) errors.size = "Elige la talla nueva.";
+  else if (input.newVariantId === input.currentVariantId) errors.size = "Elige una talla distinta de la actual.";
+  else if (!input.choices.some((choice) => choice.kit_variant_id === input.newVariantId)) errors.size = "Esa talla no está disponible para este kit.";
+  const reasonError = validateReason(input.reason);
+  if (reasonError) errors.reason = reasonError;
+  if (errors.size || errors.reason) return { ok: false, errors };
+  return { ok: true, body: { new_kit_variant_id: input.newVariantId, reason: input.reason.trim() } };
+}
+
+export function sizeChangePath(kitAllocationId: string): string {
+  return `/api/v1/admin/kits/allocations/${encodeURIComponent(kitAllocationId)}/size`;
+}
+
+export function reversePickupPath(kitPickupId: string): string {
+  return `/api/v1/admin/kits/pickup/${encodeURIComponent(kitPickupId)}/reverse`;
+}

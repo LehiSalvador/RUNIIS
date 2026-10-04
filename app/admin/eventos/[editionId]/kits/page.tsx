@@ -138,6 +138,11 @@ async function ParticipantsRegion({
     kit: row.kit,
   }));
   const activeKits = editor.kits.filter((kit) => kit.status === "ACTIVE").map((kit) => ({ kit_definition_id: kit.kit_definition_id, name: kit.name }));
+  // Every kit's sizes (a size change stays inside the allocation's own kit; the server validates it again).
+  const kitSizes = editor.kits.map((kit) => ({
+    kit_definition_id: kit.kit_definition_id,
+    variants: kit.variants.map((variant) => ({ kit_variant_id: variant.kit_variant_id, label: variant.label, status: variant.status })),
+  }));
 
   const query = new URLSearchParams();
   for (const [name, value] of Object.entries({ ...filters, cursor, limit: limit === "25" ? undefined : limit })) if (value) query.set(name, value);
@@ -153,7 +158,7 @@ async function ParticipantsRegion({
         </p>
         <DataFreshness loadedAt={new Date().toISOString()} />
       </div>
-      <KitParticipants rows={rows} editionId={editionId} activeKits={activeKits} locked={locked} />
+      <KitParticipants rows={rows} editionId={editionId} activeKits={activeKits} kitSizes={kitSizes} locked={locked} />
       <CursorPager
         shown={rows.length}
         noun={rows.length === 1 ? "participante" : "participantes"}
