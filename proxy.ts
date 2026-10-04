@@ -157,7 +157,7 @@ export function buildPublicCsp(reportUrl: string): string {
   ].join("; ");
 }
 
-function buildCsp(nonce: string, reportUrl: string): string {
+export function buildCsp(nonce: string, reportUrl: string): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${DEV_EVAL}`,
@@ -166,6 +166,9 @@ function buildCsp(nonce: string, reportUrl: string): string {
     `img-src ${imgSrc()}`,
     "font-src 'self'",
     "connect-src 'self'",
+    // P3-M: the ALTCHA solver runs in a same-origin module Worker. Without an explicit directive the worker falls back
+    // to script-src, whose 'strict-dynamic' makes browsers ignore 'self'. This only allows workers from our own origin; script-src is unchanged.
+    "worker-src 'self'",
     "frame-ancestors 'none'",
     "base-uri 'none'",
     "object-src 'none'",
