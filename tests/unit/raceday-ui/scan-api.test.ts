@@ -11,6 +11,9 @@ import {
   listItems,
   manualCheckInRequest,
   manualKitRequest,
+  guardianIdentityLine,
+  guardianRelationshipLabel,
+  parseGuardianIdentity,
   parseParticipantHits,
   parseScanResult,
   scanRequest,
@@ -138,7 +141,7 @@ describe("lookup results", () => {
     expect(listItems([row])).toHaveLength(1);
     expect(listItems({ items: [row] })).toHaveLength(1);
     expect(listItems(null)).toEqual([]);
-    expect(parseParticipantHits([row])).toEqual([{ ...row, guardian_state: "VERIFIED" }]);
+    expect(parseParticipantHits([row])).toEqual([{ ...row, public_code: null, guardian_state: "VERIFIED" }]);
     expect(parseParticipantHits([{ nope: true }, row])).toHaveLength(1);
     expect(parseParticipantHits([{ ...row, participant_pass_id: null }])[0].participant_pass_id).toBeNull();
   });
@@ -163,5 +166,47 @@ describe("guardian decisions", () => {
     expect(buildGuardianReject("   ")).toMatchObject({ ok: false });
     expect(buildGuardianReject(" No acreditó parentesco ")).toEqual({ ok: true, body: { reason: "No acreditó parentesco" } });
     expect(buildGuardianReject("x".repeat(501))).toMatchObject({ ok: false });
+  });
+});
+
+describe("guardian identity (P3-Q D1)", () => {
+  const view = (guardian: unknown) => ({
+    outcome: "GUARDIAN_VERIFICATION_REQUIRED",
+    participant: { registration_id: "r1", registration_number: "I-ABCD-0001", display_name: "Mateo", modality: { modality_id: "m1", name: "5K" }, is_minor: true, guardian_state: "PENDING", guardian },
+  });
+
+  test("the scan answer keeps the guardian's display name and relationship, and nothing else the body may carry", () => {
+    const parsed = parseScanResult(view({ display_name: "María Pérez", relationship_type: "PARENT", email: "x@example.test", phone: "+520000000000", guardian_profile_id: "g1" }));
+    expect(parsed?.participant?.guardian).toEqual({ display_name: "María Pérez", relationship_type: "PARENT" });
+    expect(JSON.stringify(parsed)).not.toMatch(/example\.test|\+52|guardian_profile_id/);
+  });
+
+  test("no guardian object (adult, verified minor, no live assignment) is null, and so is a malformed one", () => {
+    expect(parseScanResult(view(null))?.participant?.guardian).toBeNull();
+    expect(parseScanResult(view(undefined))?.participant?.guardian).toBeNull();
+    expect(parseScanResult(view({ display_name: "A" }))?.participant?.guardian).toBeNull();
+    expect(parseScanResult(view("María"))?.participant?.guardian).toBeNull();
+    expect(parseGuardianIdentity({ display_name: "   ", relationship_type: "LEGAL_GUARDIAN" })).toEqual({ display_name: null, relationship_type: "LEGAL_GUARDIAN" });
+  });
+
+  test("the identity line is 'name · relationship', relationship only without a name, and an unknown relationship is shown as received", () => {
+    expect(guardianIdentityLine({ display_name: "María Pérez", relationship_type: "PARENT" })).toBe("María Pérez · Madre o padre");
+    expect(guardianIdentityLine({ display_name: "Luis Soto", relationship_type: "LEGAL_GUARDIAN" })).toBe("Luis Soto · Tutor legal");
+    expect(guardianIdentityLine({ display_name: null, relationship_type: "PARENT" })).toBe("Madre o padre");
+    expect(guardianRelationshipLabel("GRANDPARENT")).toBe("GRANDPARENT");
+    expect(guardianIdentityLine(null)).toBeNull();
+  });
+});
+
+describe("lookup by public code (P3-Q D8)", () => {
+  test("a hit carries the printed pass code, null when the registration has no active pass", () => {
+    const row = { registration_id: "r1", participant_pass_id: "p1", public_code: "P-AB12-CD34", registration_number: "I-ABCD-0001", display_name: "Ana", modality: { modality_id: "m1", name: "10K" }, guardian_state: null };
+    expect(parseParticipantHits([row])[0].public_code).toBe("P-AB12-CD34");
+    expect(parseParticipantHits([{ ...row, public_code: null }])[0].public_code).toBeNull();
+    expect(parseParticipantHits([{ ...row, public_code: 7 }])[0].public_code).toBeNull();
+  });
+
+  test("the search keeps the typed code as is (the server compares it case-insensitively) and encodes it", () => {
+    expect(searchUrl("e1", " p-ab12-cd34 ")).toBe("/api/v1/admin/editions/e1/participants/search?q=p-ab12-cd34");
   });
 });

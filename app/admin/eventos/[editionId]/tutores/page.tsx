@@ -91,6 +91,8 @@ async function DeskRegion({ supabase, editionId, configurator }: { supabase: Sup
   const rows: GuardianRow[] = list.data.map((item) => ({
     guardian_event_verification_id: item.guardian_event_verification_id,
     status: item.status,
+    is_final: item.is_final,
+    actions: item.actions,
     created_at: item.created_at,
     participant: {
       registration_id: item.participant.registration_id,
@@ -98,6 +100,7 @@ async function DeskRegion({ supabase, editionId, configurator }: { supabase: Sup
       display_name: item.participant.display_name,
       modality: { name: item.participant.modality.name },
       category: item.participant.category ? { name: item.participant.category.name } : null,
+      guardian: item.participant.guardian ? { display_name: item.participant.guardian.display_name, relationship_type: item.participant.guardian.relationship_type } : null,
     },
   }));
   const timezone = editor && editor.ok ? editor.data.edition.timezone : null;

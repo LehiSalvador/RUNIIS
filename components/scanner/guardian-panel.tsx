@@ -10,6 +10,7 @@ import {
   GUARDIAN_METHODS,
   buildGuardianReject,
   buildGuardianVerify,
+  guardianIdentityLine,
   guardianRejectPath,
   guardianVerifyPath,
   type ParticipantMinimal,
@@ -92,6 +93,7 @@ export function GuardianPanel({
   }
 
   const view = failure ? describeFailure(failure.failure) : null;
+  const identity = guardianIdentityLine(participant.guardian);
 
   return (
     <div role="group" aria-labelledby={`${baseId}-title`} className="flex flex-col gap-1" data-testid="guardian-panel">
@@ -102,6 +104,13 @@ export function GuardianPanel({
         Pide una identificación al adulto que acompaña a {participant.display_name ?? "la persona menor"} y confirma en persona que es su
         guardián. Lo que registres queda como evidencia.
       </p>
+      {identity ? (
+        <div className="mt-2 rounded-control border border-divider bg-paper-sunken px-3 py-2" data-testid="guardian-identity">
+          <p className="text-caption text-ink-80">Guardián registrado</p>
+          <p className="text-body font-semibold text-ink">{identity}</p>
+          <p className="text-caption text-ink-80">Compara este nombre con el de su identificación.</p>
+        </div>
+      ) : null}
       <div className="mt-2">
         <SelectField
           id={`${baseId}-method`}

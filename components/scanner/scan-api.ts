@@ -1,5 +1,6 @@
 import { apiFetch, newIdempotencyKey, type ApiFailure, type ApiResult } from "@/lib/client/api";
 import { describeFailure, type AdminErrorView } from "@/components/admin/errors";
+import { GUARDIAN_RELATIONSHIP_LABELS } from "@/lib/client/account-format";
 import { isScanOutcome, type ScanOperation, type ScanOutcome } from "@/components/scanner/outcomes";
 
 /**
@@ -11,6 +12,12 @@ import { isScanOutcome, type ScanOperation, type ScanOutcome } from "@/component
  * so a timed-out call that did reach the server can never apply twice; a NEW intent (e.g. the re-scan right after a guardian was
  * verified) builds a new request with a fresh key, because the old key would replay the stored "guardian required" answer.
  */
+/**
+ * The one thing staff may know about the adult they are verifying: the name an identity document shows and the relationship on file
+ * (P3-Q D1). The API returns nothing else about the guardian and the UI must not ask for more.
+ */
+export type GuardianIdentity = { display_name: string | null; relationship_type: string };
+
 export type ParticipantMinimal = {
   registration_id: string;
   registration_number: string;
@@ -21,6 +28,8 @@ export type ParticipantMinimal = {
   category: { category_id: string; name: string } | null;
   is_minor: boolean;
   guardian_state: "PENDING" | "VERIFIED" | "REJECTED" | null;
+  /** Present only for a minor whose guardian is still to be verified and who has a live assignment; null otherwise. */
+  guardian: GuardianIdentity | null;
 };
 
 export type ScanResult = {
@@ -100,6 +109,29 @@ export function isRetryable(failure: ApiFailure): boolean {
 
 const GUARDIAN_STATES = ["PENDING", "VERIFIED", "REJECTED"];
 
+/** Reads the `guardian` key of a participant view. Only the two documented fields are kept, whatever else a body carries. */
+export function parseGuardianIdentity(value: unknown): GuardianIdentity | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.relationship_type !== "string" || row.relationship_type.length === 0) return null;
+  return { display_name: typeof row.display_name === "string" && row.display_name.trim().length > 0 ? row.display_name : null, relationship_type: row.relationship_type };
+}
+
+/** "Madre o padre" for a known relationship; an unknown one is shown as the server sent it rather than guessed. */
+export function guardianRelationshipLabel(relationshipType: string): string {
+  return GUARDIAN_RELATIONSHIP_LABELS[relationshipType] ?? relationshipType;
+}
+
+/**
+ * The identity line staff compare against the adult's ID document: "María Pérez · Madre o padre". Without a name only the
+ * relationship is shown, never a placeholder name. Returns null when there is no guardian to describe.
+ */
+export function guardianIdentityLine(guardian: GuardianIdentity | null): string | null {
+  if (!guardian) return null;
+  const relationship = guardianRelationshipLabel(guardian.relationship_type);
+  return guardian.display_name ? `${guardian.display_name} · ${relationship}` : relationship;
+}
+
 function parseParticipant(value: unknown): ParticipantMinimal | null {
   if (!value || typeof value !== "object") return null;
   const row = value as Record<string, unknown>;
@@ -116,6 +148,7 @@ function parseParticipant(value: unknown): ParticipantMinimal | null {
     category: category && typeof category.name === "string" ? { category_id: String(category.category_id ?? ""), name: category.name } : null,
     is_minor: row.is_minor === true,
     guardian_state: typeof row.guardian_state === "string" && GUARDIAN_STATES.includes(row.guardian_state) ? (row.guardian_state as ParticipantMinimal["guardian_state"]) : null,
+    guardian: parseGuardianIdentity(row.guardian),
   };
 }
 
@@ -168,6 +201,8 @@ export function describeScanFailure(failure: Pick<ApiFailure, "code" | "requestI
 export type ParticipantHit = {
   registration_id: string;
   participant_pass_id: string | null;
+  /** The code printed on the pass (P-XXXX-XXXX); null when the registration has no active pass. */
+  public_code: string | null;
   registration_number: string;
   display_name: string | null;
   modality: { modality_id: string; name: string };
@@ -194,6 +229,7 @@ export function parseParticipantHits(data: unknown): ParticipantHit[] {
     hits.push({
       registration_id: row.registration_id,
       participant_pass_id: typeof row.participant_pass_id === "string" ? row.participant_pass_id : null,
+      public_code: typeof row.public_code === "string" && row.public_code.length > 0 ? row.public_code : null,
       registration_number: row.registration_number,
       display_name: typeof row.display_name === "string" ? row.display_name : null,
       modality: { modality_id: String(modality.modality_id ?? ""), name: modality.name },

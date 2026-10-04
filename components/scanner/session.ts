@@ -1,3 +1,4 @@
+import { formatCalendarDate } from "@/components/admin/format";
 import type { ScanOperation } from "@/components/scanner/outcomes";
 
 /**
@@ -90,4 +91,16 @@ export type KitChoice = { kit_definition_id: string; name: string; status: strin
 
 export function selectableKits(kits: readonly KitChoice[]): KitChoice[] {
   return kits.filter((kit) => kit.status === "ACTIVE");
+}
+
+// ---- Edition picker --------------------------------------------------------------------------------------------------------------
+
+const EDITION_STATE_LABEL: Record<string, string> = { IN_PROGRESS: "En curso" };
+
+/** One line under an Edition's name in the picker (a row of `GET /api/v1/scanner/editions`): its date, its Event when the names differ, a live state. */
+export function scannerEditionDetail(row: { name: string; event_name: string; date: string | null; state: string }): string | null {
+  const parts = [row.date ? formatCalendarDate(row.date) : null, row.event_name && row.event_name !== row.name ? row.event_name : null, EDITION_STATE_LABEL[row.state] ?? null].filter(
+    (part): part is string => Boolean(part),
+  );
+  return parts.length > 0 ? parts.join(" · ") : null;
 }

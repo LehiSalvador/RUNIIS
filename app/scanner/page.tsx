@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import React from "react";
 import { AdminForbidden } from "@/components/admin/access-states";
 import { AdminPage } from "@/components/admin/admin-page";
+import { ErrorNotice } from "@/components/admin/error-notice";
 import { ScannerApp } from "@/components/scanner/scanner-app";
 import { requireStaff } from "@/app/admin/_lib/session";
 import { SCANNER_ROLES, loadScannerEditions } from "@/app/scanner/_lib/editions";
@@ -27,6 +28,14 @@ export default async function ScannerPage() {
     );
   }
 
-  const editions = await loadScannerEditions(supabase, assignments);
-  return <ScannerApp editions={editions} />;
+  const editions = await loadScannerEditions(supabase);
+  if (!editions.ok) {
+    // A failed read is not "you have no editions": say what happened and keep the support reference.
+    return (
+      <AdminPage assignments={assignments} title="Escáner de acceso">
+        <ErrorNotice code={editions.code} requestId={editions.requestId} title="No pudimos cargar las ediciones del escáner." />
+      </AdminPage>
+    );
+  }
+  return <ScannerApp editions={editions.data} />;
 }

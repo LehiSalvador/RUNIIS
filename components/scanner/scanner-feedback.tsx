@@ -119,7 +119,11 @@ export function ScannerFeedback({
       data-tone={tone}
       className={cn("flex h-full flex-col bg-paper text-ink", TONE[tone].surface)}
     >
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-y-auto px-6 pt-[max(1.5rem,env(safe-area-inset-top))] text-center">
+      {/* With the guardian panel up this region shrinks and can scroll on a small phone: it is then a keyboard-reachable region (axe: scrollable-region-focusable). */}
+      <div
+        {...(hasPanel ? { tabIndex: 0, role: "region", "aria-labelledby": headingId } : {})}
+        className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 overflow-y-auto px-6 pt-[max(1.5rem,env(safe-area-inset-top))] text-center outline-offset-[-2px]"
+      >
         <Icon className={cn("size-16 shrink-0", TONE[tone].accent)} aria-hidden="true" />
         <h2 id={headingId} className={cn("font-display text-h3 font-bold sm:text-h2", TONE[tone].accent)}>
           {label}

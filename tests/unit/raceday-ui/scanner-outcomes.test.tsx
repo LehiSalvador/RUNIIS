@@ -45,6 +45,7 @@ const participant = {
   category: null,
   is_minor: false,
   guardian_state: null,
+  guardian: null,
 };
 
 describe("scanner outcomes (T13 3.6)", () => {

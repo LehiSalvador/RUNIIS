@@ -10,7 +10,15 @@ import { AdminBadge } from "@/components/admin/status-badges";
 import { SelectField, TextareaField } from "@/components/admin/events/fields";
 import { FormDialog } from "@/components/admin/events/form-dialog";
 import { formatDateTime } from "@/components/admin/format";
-import { GUARDIAN_METHODS, buildGuardianReject, buildGuardianVerify, guardianRejectPath, guardianVerifyPath } from "@/components/scanner/scan-api";
+import {
+  GUARDIAN_METHODS,
+  buildGuardianReject,
+  buildGuardianVerify,
+  guardianIdentityLine,
+  guardianRejectPath,
+  guardianVerifyPath,
+  type GuardianIdentity,
+} from "@/components/scanner/scan-api";
 
 /**
  * Guardian desk (Master §21, T12 J4 step 3): a minor cannot complete check-in until an adult responsible for them is verified IN PERSON
@@ -20,10 +28,18 @@ import { GUARDIAN_METHODS, buildGuardianReject, buildGuardianVerify, guardianRej
  *
  * The list only contains minors a pass was already presented for (the database creates the pending row on the first scan), so a minor
  * who has not arrived does not appear yet; the scanner opens the same decision on the spot.
+ *
+ * A REJECTED verification is final (Master §21 has no re-open): the server marks it `is_final` and offers it no actions, so the row
+ * stays as the trace of the decision and renders without buttons. The only thing shown about the adult is the name and relationship
+ * on file, to compare with their identity document; nothing else about them is available to staff.
  */
 export type GuardianRow = {
   guardian_event_verification_id: string;
   status: "PENDING" | "REJECTED";
+  /** True exactly when the decision cannot be changed (REJECTED). */
+  is_final: boolean;
+  /** What the server still allows on this row; empty when final. */
+  actions: readonly ("VERIFY" | "REJECT")[];
   created_at: string;
   participant: {
     registration_id: string;
@@ -31,6 +47,7 @@ export type GuardianRow = {
     display_name: string | null;
     modality: { name: string };
     category: { name: string } | null;
+    guardian: GuardianIdentity | null;
   };
 };
 
@@ -48,6 +65,10 @@ export function GuardianDesk({ rows, timezone }: { rows: GuardianRow[]; timezone
           <div className="min-w-0">
             <p className="font-semibold text-ink">{row.participant.display_name ?? "Sin nombre"}</p>
             <p className="text-caption text-ink-60">Inscripción {row.participant.registration_number}</p>
+            <p className="mt-0.5 text-body-sm text-ink" data-testid="guardian-identity">
+              <span className="text-ink-60">Guardián: </span>
+              <span className="font-semibold">{guardianIdentityLine(row.participant.guardian) ?? "sin asignación vigente"}</span>
+            </p>
           </div>
         ),
       },
@@ -61,9 +82,12 @@ export function GuardianDesk({ rows, timezone }: { rows: GuardianRow[]; timezone
               Por verificar
             </AdminBadge>
           ) : (
-            <AdminBadge icon={ShieldX} tone="danger">
-              Rechazada
-            </AdminBadge>
+            <div className="flex flex-col items-start gap-1">
+              <AdminBadge icon={ShieldX} tone="danger">
+                Rechazada
+              </AdminBadge>
+              {row.is_final ? <span className="text-caption text-ink-60">Decisión final</span> : null}
+            </div>
           ),
       },
       { key: "modality", header: "Modalidad", priority: 3, render: (row) => `${row.participant.modality.name}${row.participant.category ? ` · ${row.participant.category.name}` : ""}` },
@@ -88,7 +112,7 @@ export function GuardianDesk({ rows, timezone }: { rows: GuardianRow[]; timezone
           </li>
           <li className="flex gap-2">
             <CircleAlert className="mt-0.5 size-5 shrink-0 text-ink" aria-hidden="true" />
-            Una verificación rechazada no se puede revertir desde aquí: el menor pasa por la mesa de atención.
+            Una verificación rechazada es definitiva: queda en la lista como constancia y sin acciones. El menor pasa por la mesa de atención.
           </li>
         </ul>
       </Panel>
@@ -112,14 +136,18 @@ export function GuardianDesk({ rows, timezone }: { rows: GuardianRow[]; timezone
           headingLevel: "h2",
         }}
         rowActions={(row) =>
-          row.status === "PENDING" ? (
+          row.actions.length > 0 ? (
             <div className="flex flex-wrap justify-end gap-1">
-              <Button size="sm" onClick={() => setVerify(row)}>
-                Verificar<span className="sr-only"> al guardián de {row.participant.display_name ?? row.participant.registration_number}</span>
-              </Button>
-              <Button size="sm" variant="secondary" onClick={() => setReject(row)}>
-                Rechazar<span className="sr-only"> la verificación de {row.participant.display_name ?? row.participant.registration_number}</span>
-              </Button>
+              {row.actions.includes("VERIFY") ? (
+                <Button size="sm" onClick={() => setVerify(row)}>
+                  Verificar<span className="sr-only"> al guardián de {row.participant.display_name ?? row.participant.registration_number}</span>
+                </Button>
+              ) : null}
+              {row.actions.includes("REJECT") ? (
+                <Button size="sm" variant="secondary" onClick={() => setReject(row)}>
+                  Rechazar<span className="sr-only"> la verificación de {row.participant.display_name ?? row.participant.registration_number}</span>
+                </Button>
+              ) : null}
             </div>
           ) : null
         }
@@ -151,7 +179,7 @@ function VerifyDialog({ row, onClose }: { row: GuardianRow; onClose: () => void 
       open
       onOpenChange={(open) => (open ? undefined : onClose())}
       title={`Verificar al guardián de ${row.participant.display_name ?? row.participant.registration_number}`}
-      description="Confirma que ya verificaste en persona al adulto responsable. Después de guardarlo el menor puede hacer check-in."
+      description={`Confirma que ya verificaste en persona al adulto responsable${guardianIdentityLine(row.participant.guardian) ? ` (${guardianIdentityLine(row.participant.guardian)})` : ""}. Después de guardarlo el menor puede hacer check-in.`}
       submitLabel="Verificar guardián"
       successMessage="Guardián verificado"
       onSubmit={onSubmit}

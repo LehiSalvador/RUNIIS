@@ -22,7 +22,7 @@ import type { ScanSession } from "@/components/scanner/session";
 
 /**
  * Manual lookup (T12 J4 step 4): always one tap away inside the scan view, it feeds the SAME server checks as a scan. The search
- * (SEC-024: at least 3 characters, minimal fields) resolves a person by name or inscription number; the action that follows depends
+ * (SEC-024: at least 3 characters, minimal fields) resolves a person by name, inscription number or the exact code printed on the pass (P-XXXX-XXXX, any letter case; a fragment of it does not match); the action that follows depends
  * on the session operation and is sent through the existing commands:
  *   check-in  -> POST /api/v1/check-in/manual-verify (reason required, one Idempotency-Key per intent)
  *   kit       -> POST /api/v1/admin/kits/pickup with registration_id (a third party needs a reason)
@@ -88,7 +88,7 @@ export function ManualLookup({ session, onSubmit }: { session: ScanSession; onSu
   return (
     <div className="flex flex-col gap-4" data-testid="manual-lookup">
       <form onSubmit={search} className="flex flex-col gap-2" role="search" aria-label="Buscar participante">
-        <FormField id={`${baseId}-q`} label="Nombre o número de inscripción" errorText={hint ?? undefined} helperText="Mínimo 3 caracteres. Solo se muestran los datos necesarios.">
+        <FormField id={`${baseId}-q`} label="Nombre, inscripción o código del pase" errorText={hint ?? undefined} helperText="Mínimo 3 caracteres. El código del pase se escribe completo. Solo se muestran los datos necesarios.">
           <div className="flex gap-2">
             <TextField
               id={`${baseId}-q`}
@@ -144,6 +144,7 @@ export function ManualLookup({ session, onSubmit }: { session: ScanSession; onSu
                     <span className="text-body-sm text-ink-80">
                       Inscripción {hit.registration_number} · {hit.modality.name}
                     </span>
+                    {hit.public_code ? <span className="text-caption text-ink-80">Pase {hit.public_code}</span> : null}
                     {hit.guardian_state ? <span className="text-caption font-semibold text-ink">{GUARDIAN_LABEL[hit.guardian_state]}</span> : null}
                   </button>
                 </li>
