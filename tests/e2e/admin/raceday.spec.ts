@@ -1,5 +1,6 @@
 import { mkdirSync } from "node:fs";
 import type { Locator, Page, TestInfo } from "@playwright/test";
+import QRCode from "qrcode";
 import { LOCAL_DB_ONLY } from "../support/account";
 import { scanForSeriousViolations } from "../support/axe";
 import { e2eEnv } from "../support/env";
@@ -7,11 +8,11 @@ import { expect, gotoAndSettle, signInAs, test as base } from "./support";
 import { seedRaceday, type Seeded } from "./raceday-support";
 
 /**
- * Race day (P3-H): the scanner for a CHECKIN member on a phone, the guardian desk and the Kit Center. Every outcome is produced by the
+ * Race day (P3-H, completed by P3-H2): the scanner for a CHECKIN member on a phone, the guardian desk and the Kit Center. Every outcome is produced by the
  * real server against fixtures written by raceday-support.ts (see scanner-outcomes.md for how each one is reproduced). Needs the local
  * stack (Docker DB, Mailpit) like the other admin specs.
  */
-const SHOTS = ".salvaops-agent-evidence/P3-H-raceday-kits-guardian-scanner-checkin/screens";
+const SHOTS = ".salvaops-agent-evidence/P3-H2-raceday-completion/screens";
 mkdirSync(SHOTS, { recursive: true });
 
 const test = base.extend<{ shot: (name: string) => Promise<void>; a11y: () => Promise<void> }>({
@@ -104,6 +105,17 @@ test.describe("scanner session (CHECKIN)", () => {
 
     // the Edition is offered by name even though CHECKIN cannot read the staff Edition list
     await expect(page.getByLabel("Edición").locator(`option[value="${seed.editionId}"]`)).toHaveCount(1);
+    // an Edition still in draft is never offered, and the picker is exactly what GET /api/v1/scanner/editions answers
+    await expect(page.getByLabel("Edición").locator(`option[value="${seed.otherEditionId}"]`)).toHaveCount(0);
+    const api = await page.request.get("/api/v1/scanner/editions");
+    expect(api.status()).toBe(200);
+    const listed: { edition_id: string; name: string }[] = (await api.json()).data;
+    expect(listed.map((item) => item.edition_id)).toContain(seed.editionId);
+    expect(listed.map((item) => item.edition_id)).not.toContain(seed.otherEditionId);
+    const offered = await page.getByLabel("Edición").locator("option:not([value=''])").evaluateAll((nodes) => nodes.map((node) => (node as HTMLOptionElement).value));
+    // other projects seed Editions while this one runs, so the page may be a little older than the API answer: it must never offer more
+    expect(offered.length).toBeGreaterThan(0);
+    for (const id of offered) expect(listed.map((item) => item.edition_id)).toContain(id);
   });
 
   test("a complete session opens the scan view with the fixed context, the camera control, the code field and the manual lookup", async ({ page, shot, a11y }) => {
@@ -222,6 +234,10 @@ test.describe("scanner outcomes (server judged)", () => {
     const panel = page.getByTestId("guardian-panel");
     await expect(panel).toBeVisible();
     await expect(page.getByTestId("scan-participant")).toContainText("Menor de edad");
+    // the adult to compare with the ID document: name and relationship, and nothing more
+    const identity = panel.getByTestId("guardian-identity");
+    await expect(identity).toContainText(`${seed.guardianName} · Madre o padre`);
+    expect(await identity.innerText()).not.toMatch(/@|\+52|nacimiento/i);
     await shot("outcome-GUARDIAN_VERIFICATION_REQUIRED");
     await a11y();
 
@@ -402,14 +418,49 @@ test.describe("scanner camera", () => {
     expect(page.url()).not.toContain("RN1");
   });
 
-  test("when the browser cannot read QR codes the page says so and the typed code still works", async ({ page }) => {
+  test("without BarcodeDetector (iOS Safari) the camera decodes a real QR frame with jsqr and sends the exact text", async ({ page, shot }) => {
+    const png = await QRCode.toDataURL(seed.tokens.minorId, { margin: 4, width: 480, errorCorrectionLevel: "M" });
+    // The camera is a canvas stream showing the QR image: a real video element, a real stream, real frames for the decoder.
+    await page.addInitScript(({ image }) => {
+      Object.defineProperty(window, "BarcodeDetector", { value: undefined, configurable: true });
+      const canvas = document.createElement("canvas");
+      canvas.width = 480;
+      canvas.height = 480;
+      const context = canvas.getContext("2d")!;
+      const picture = new Image();
+      picture.src = image;
+      window.setInterval(() => {
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, 480, 480);
+        if (picture.complete && picture.naturalWidth > 0) context.drawImage(picture, 0, 0, 480, 480);
+      }, 40);
+      const stream = canvas.captureStream(20);
+      navigator.mediaDevices.getUserMedia = async () => stream;
+    }, { image: png });
+    await signInAs(page, "checkin");
+    await startSession(page, { operation: "Check-in" });
+    const requests: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/v1/check-in")) requests.push(request.postData() ?? "");
+    });
+    await page.getByRole("button", { name: "Activar cámara" }).click();
+    await expect(page.getByTestId("scanner-video")).toBeVisible();
+    await expectOutcome(page, "GUARDIAN_VERIFICATION_REQUIRED", "Requiere verificar guardián");
+    expect(requests).toHaveLength(1);
+    expect(JSON.parse(requests[0]).credential_token).toBe(seed.tokens.minorId);
+    await expect(page.getByTestId("guardian-identity")).toContainText(`${seed.guardianName} · Madre o padre`);
+    await shot("scanner-camera-fallback-guardian");
+    expect(page.url()).not.toContain("RN1");
+  });
+
+  test("a browser with no camera API says so and the typed code still works", async ({ page }) => {
     await page.addInitScript(() => {
-      delete (window as unknown as { BarcodeDetector?: unknown }).BarcodeDetector;
+      Object.defineProperty(navigator.mediaDevices, "getUserMedia", { value: undefined, configurable: true });
     });
     await signInAs(page, "checkin");
     await startSession(page, { operation: "Check-in" });
     await page.getByRole("button", { name: "Activar cámara" }).click();
-    await expect(page.getByText("no puede leer códigos QR con la cámara")).toBeVisible();
+    await expect(page.getByText("no puede abrir la cámara")).toBeVisible();
     await expect(page.getByLabel("Código del pase")).toBeVisible();
   });
 });
@@ -426,11 +477,11 @@ test.describe("scanner manual lookup", () => {
     // the session context stays visible above the drawer
     await expect(page.getByTestId("session-context")).toBeVisible();
 
-    await lookup.getByLabel("Nombre o número de inscripción").fill("ab");
+    await lookup.getByLabel("Nombre, inscripción o código del pase").fill("ab");
     await lookup.getByRole("button", { name: "Buscar" }).click();
     await expect(lookup.getByText("Escribe al menos 3 letras o números.")).toBeVisible();
 
-    await lookup.getByLabel("Nombre o número de inscripción").fill(`Manual Llegada ${seed.suffix}`);
+    await lookup.getByLabel("Nombre, inscripción o código del pase").fill(`Manual Llegada ${seed.suffix}`);
     await lookup.getByRole("button", { name: "Buscar" }).click();
     await lookup.getByRole("button", { name: new RegExp(seed.names.manual) }).click();
     const action = page.getByTestId("lookup-action");
@@ -446,12 +497,30 @@ test.describe("scanner manual lookup", () => {
     expect(["scan-outcome-VALID", "scan-outcome-ALREADY_CHECKED_IN"]).toContain(await outcome.getAttribute("data-testid"));
   });
 
+  test("a person is found by the exact public code of the pass, in any letter case, never by a fragment", async ({ page, shot, a11y }) => {
+    await signInAs(page, "checkin");
+    await startSession(page, { operation: "Check-in" });
+    await page.getByRole("button", { name: "Búsqueda manual" }).click();
+    const lookup = page.getByTestId("manual-lookup");
+    const field = lookup.getByLabel("Nombre, inscripción o código del pase");
+    await field.fill(seed.publicCodes.manual.toLowerCase());
+    await lookup.getByRole("button", { name: "Buscar" }).click();
+    const hit = lookup.getByRole("button", { name: new RegExp(seed.names.manual) });
+    await expect(hit).toBeVisible();
+    await expect(hit).toContainText(`Pase ${seed.publicCodes.manual}`);
+    await shot("scanner-lookup-public-code");
+    await a11y();
+    await field.fill(seed.publicCodes.manual.slice(0, -2));
+    await lookup.getByRole("button", { name: "Buscar" }).click();
+    await expect(page.getByTestId("lookup-empty")).toBeVisible();
+  });
+
   test("a minor found by name goes through the same guardian dialog, then checks in", async ({ page }) => {
     await signInAs(page, "checkin");
     await startSession(page, { operation: "Check-in" });
     await page.getByRole("button", { name: "Búsqueda manual" }).click();
     const lookup = page.getByTestId("manual-lookup");
-    await lookup.getByLabel("Nombre o número de inscripción").fill(seed.numbers.manualMinor);
+    await lookup.getByLabel("Nombre, inscripción o código del pase").fill(seed.numbers.manualMinor);
     await lookup.getByRole("button", { name: "Buscar" }).click();
     await expect(lookup.getByText("Menor: guardián por verificar")).toBeVisible();
     await lookup.getByRole("button", { name: new RegExp(seed.names.manualMinor) }).click();
@@ -467,7 +536,7 @@ test.describe("scanner manual lookup", () => {
     await startSession(page, { operation: "Entrega de kits", kit: seed.kitMainName });
     await page.getByRole("button", { name: "Búsqueda manual" }).click();
     const lookup = page.getByTestId("manual-lookup");
-    await lookup.getByLabel("Nombre o número de inscripción").fill(`Kit Manual ${seed.suffix}`);
+    await lookup.getByLabel("Nombre, inscripción o código del pase").fill(`Kit Manual ${seed.suffix}`);
     await lookup.getByRole("button", { name: "Buscar" }).click();
     await lookup.getByRole("button", { name: new RegExp(seed.names.kitManual) }).click();
     const action = page.getByTestId("lookup-action");
@@ -496,6 +565,7 @@ test.describe("guardian desk", () => {
     const row = page.getByRole("row", { name: new RegExp(seed.names.minorDesk) });
     await expect(row).toBeVisible();
     await expect(row).toContainText("Por verificar");
+    await expect(row.getByTestId("guardian-identity")).toContainText(`${seed.guardianName} · Madre o padre`);
     await shot("guardian-desk");
     await a11y();
 
@@ -522,6 +592,13 @@ test.describe("guardian desk", () => {
     await expect(page.getByRole("dialog")).toHaveCount(0);
     const rejected = page.getByRole("row", { name: new RegExp(seed.names.minorDeskReject) }).first();
     await expect(rejected).toContainText("Rechazada");
+    await expect(rejected).toContainText("Decisión final");
+    // below lg the row's actions live in its detail disclosure: open it, so "no actions" is asserted where they would be
+    const disclosure = page.getByRole("button", { name: `Ver detalle de ${seed.names.minorDeskReject}` });
+    if (await disclosure.isVisible()) await disclosure.click();
+    await expect(page.getByRole("button", { name: new RegExp(`^(Verificar|Rechazar).*${seed.names.minorDeskReject}`) })).toHaveCount(0);
+    await shot("guardian-desk-rejected-final");
+    await a11y();
     await expect(page.getByRole("button", { name: new RegExp(`Verificar.*${seed.names.minorDeskReject}`) })).toHaveCount(0);
     const again = await page.request.post("/api/v1/check-in", { data: { edition_id: seed.editionId, credential_token: seed.tokens.minorDeskReject, station_key: "Mesa QA" } });
     expect((await again.json()).data.outcome).toBe("OTHER_REVIEW");
@@ -571,15 +648,64 @@ test.describe("kit centre (OPERATOR)", () => {
     await a11y();
     await dialog.getByRole("button", { name: "Entregar kit" }).click();
     await expect(page.getByRole("row", { name: new RegExp(seed.names.kitUi) }).first()).toContainText("Entregado");
-    const deliveries = page.getByTestId("session-deliveries");
-    await expect(deliveries).toContainText(seed.names.kitUi);
 
-    await deliveries.getByRole("button", { name: /Revertir entrega/ }).click();
+    // the delivered row itself offers the reversal (it reads the active pickup id from the participants list)
+    await (await rowAction(page, seed.names.kitUi, "Revertir entrega")).click();
     const confirm = page.getByRole("dialog");
     await expect(confirm.getByRole("button", { name: "Revertir entrega" })).toBeDisabled();
     await confirm.getByLabel(/Motivo/).fill("Entregado a la persona equivocada");
     await confirm.getByRole("button", { name: "Revertir entrega" }).click();
     await expect(page.getByRole("row", { name: new RegExp(seed.names.kitUi) }).first()).toContainText("Asignado");
+  });
+
+  test("a delivery made earlier (not in this page session) can be reversed, and the size of an assigned kit can be changed", async ({ page, shot, a11y }) => {
+    await signInAs(page, "operator");
+    // delivered through the API before the page is even opened: the reversal cannot depend on this session
+    const delivered = await page.request.post("/api/v1/admin/kits/pickup", {
+      headers: { "Idempotency-Key": crypto.randomUUID() },
+      data: { edition_id: seed.editionId, kit_definition_id: seed.kitMainId, registration_id: seed.registrations.kitRev, station_key: "Mesa QA" },
+    });
+    expect((await delivered.json()).data.outcome).toBe("VALID");
+
+    await gotoAndSettle(page, `/admin/eventos/${seed.editionId}/kits?search=${encodeURIComponent(seed.numbers.kitRev)}`);
+    const row = page.getByRole("row", { name: new RegExp(seed.names.kitRev) });
+    await expect(row).toContainText("Entregado");
+    // a delivered kit cannot change size; it can be reversed
+    await expect(page.getByRole("button", { name: new RegExp(`Cambiar talla.*${seed.names.kitRev}`) })).toHaveCount(0);
+    await (await rowAction(page, seed.names.kitRev, "Revertir entrega")).click();
+    const confirm = page.getByRole("dialog");
+    await confirm.getByLabel(/Motivo/).fill("Se entregó por error");
+    await shot("kits-reverse-dialog");
+    await a11y();
+    await confirm.getByRole("button", { name: "Revertir entrega" }).click();
+    await expect(page.getByRole("row", { name: new RegExp(seed.names.kitRev) }).first()).toContainText("Asignado");
+
+    // size change: Talla L -> Talla M on the now-assigned kit
+    await expect(page.getByRole("row", { name: new RegExp(seed.names.kitRev) }).first()).toContainText("Talla L");
+    await (await rowAction(page, seed.names.kitRev, "Cambiar talla")).click();
+    const size = page.getByRole("dialog");
+    await size.getByRole("button", { name: "Cambiar talla" }).click();
+    await expect(size.getByText("Elige la talla nueva.")).toBeVisible();
+    await size.getByLabel("Talla nueva").selectOption({ label: "Talla M" });
+    await size.getByLabel(/Motivo/).fill("La persona pidió otra talla");
+    await shot("kits-size-dialog");
+    await a11y();
+    await size.getByRole("button", { name: "Cambiar talla" }).click();
+    await expect(page.getByText("Talla cambiada", { exact: true }).first()).toBeVisible();
+    await expect(page.getByRole("row", { name: new RegExp(seed.names.kitRev) }).first()).toContainText("Talla M");
+  });
+
+  test("the size of an assigned kit changes from the row", async ({ page }) => {
+    await signInAs(page, "operator");
+    await gotoAndSettle(page, `/admin/eventos/${seed.editionId}/kits?search=${encodeURIComponent(seed.numbers.kitSize)}`);
+    const row = page.getByRole("row", { name: new RegExp(seed.names.kitSize) });
+    await expect(row).toContainText("Talla M");
+    await (await rowAction(page, seed.names.kitSize, "Cambiar talla")).click();
+    const size = page.getByRole("dialog");
+    await size.getByLabel("Talla nueva").selectOption({ label: "Talla L" });
+    await size.getByLabel(/Motivo/).fill("Cambio en mostrador");
+    await size.getByRole("button", { name: "Cambiar talla" }).click();
+    await expect(page.getByRole("row", { name: new RegExp(seed.names.kitSize) }).first()).toContainText("Talla L");
   });
 
   test("a delivery for another person needs the reason before it is sent", async ({ page }) => {

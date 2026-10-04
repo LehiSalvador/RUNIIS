@@ -46,6 +46,10 @@ export type Seeded = {
   numbers: Record<string, string>;
   passes: Record<string, string>;
   registrations: Record<string, string>;
+  /** The code printed on each pass (P-XXXX-NNNN), by role. */
+  publicCodes: Record<string, string>;
+  /** The legal name the guardian assignment of every seeded minor points at (the buyer's profile). */
+  guardianName: string;
 };
 
 type Spec = {
@@ -80,6 +84,9 @@ const SPECS: Spec[] = [
   { key: "kitUi", edition: "A", label: "Kit Pantalla", kit: { def: "main", variant: "M" } },
   { key: "kitUiThird", edition: "A", label: "Kit Pantalla Tercero", kit: { def: "main", variant: "L" } },
   { key: "kitQr", edition: "A", label: "Kit Cambio QR", kit: { def: "main", variant: "M" } },
+  { key: "kitSize", edition: "A", label: "Kit Cambio Talla", kit: { def: "main", variant: "M" } },
+  { key: "kitRev", edition: "A", label: "Kit Reversa", kit: { def: "main", variant: "L" } },
+  { key: "minorId", edition: "A", label: "Menor Identidad", dob: "2012-08-08", guardian: true },
 ];
 
 export function seedRaceday(): Seeded {
@@ -144,6 +151,7 @@ export function seedRaceday(): Seeded {
   const numbers: Record<string, string> = {};
   const passes: Record<string, string> = {};
   const registrations: Record<string, string> = {};
+  const publicCodes: Record<string, string> = {};
   const editionOf = { A: ids.A, B: ids.B, C: ids.C };
   const modalityOf = { A: ids.modA, B: ids.modB, C: ids.modC };
 
@@ -161,6 +169,7 @@ export function seedRaceday(): Seeded {
     numbers[spec.key] = number;
     passes[spec.key] = pass;
     registrations[spec.key] = registration;
+    publicCodes[spec.key] = `P-${numberPrefix}-${String(index + 1).padStart(4, "0")}`;
     const dob = spec.dob ?? "1990-01-01";
     statements.push(`
       insert into app.guest_participant (guest_participant_id, owner_profile_id, full_name, date_of_birth, sex_code, phone_e164,
@@ -176,7 +185,7 @@ export function seedRaceday(): Seeded {
         buyer_profile_id, registration_number, status, confirmed_at, canceled_at, cancel_reason)
       values ('${registration}', '${request}', '${requestParticipant}', '${edId}', '${modId}', '${guest}', '${ids.buyer}', '${number}',
         '${spec.canceled ? "CANCELED" : "CONFIRMED"}', now() - interval '3 hours', ${spec.canceled ? "now()" : "null"}, ${spec.canceled ? "'qa fixture'" : "null"});
-      insert into app.participant_pass (participant_pass_id, registration_id, public_code) values ('${pass}', '${registration}', 'P-${numberPrefix}-${String(index + 1).padStart(4, "0")}');`);
+      insert into app.participant_pass (participant_pass_id, registration_id, public_code) values ('${pass}', '${registration}', '${publicCodes[spec.key]}');`);
 
     const token = newToken();
     const credentialId = randomUUID();
@@ -237,5 +246,7 @@ export function seedRaceday(): Seeded {
     numbers,
     passes,
     registrations,
+    publicCodes,
+    guardianName: `QA Raceday Comprador ${suffix}`,
   };
 }
