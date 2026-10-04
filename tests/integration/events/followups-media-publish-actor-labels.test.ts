@@ -250,4 +250,3 @@ describe("media publish re-validation and actor labels (P3-P) integration", () =
     }
   });
 });
-
