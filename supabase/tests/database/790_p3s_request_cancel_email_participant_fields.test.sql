@@ -146,15 +146,15 @@ select ok((select tv.html_template !~ '\{\{\s*(cancel_)?reason\s*\}\}' and tv.te
 set local role authenticated;
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000790002", "role": "authenticated"}';
 select is(pg_temp.err($$ select public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790101', 'SECRETO-INTERNO llamó por teléfono',
-  'NO_SUCH_CATEGORY', 'p790-cancel-key-0000') $$) -> 'detail' ->> 'field', 'reason_category', 'an unknown category is a validation error on reason_category');
+  'p790-cancel-key-0000', 'NO_SUCH_CATEGORY') $$) -> 'detail' ->> 'field', 'reason_category', 'an unknown category is a validation error on reason_category');
 select is(pg_temp.sv($q$ select status from app.registration_request where registration_request_id = '70000000-0000-4000-8000-000000790101' $q$),
   'PENDING_CONFIRMATION', 'and nothing was canceled');
 select is(public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790101', 'SECRETO-INTERNO llamó por teléfono',
-  'DUPLICATE_REGISTRATION', 'p790-cancel-key-0001') ->> 'status', 'CANCELED_BY_STAFF', 'OPERATOR cancels R101 with a category');
+  'p790-cancel-key-0001', 'DUPLICATE_REGISTRATION') ->> 'status', 'CANCELED_BY_STAFF', 'OPERATOR cancels R101 with a category');
 select is(public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790101', 'SECRETO-INTERNO llamó por teléfono',
-  'DUPLICATE_REGISTRATION', 'p790-cancel-key-0001') ->> 'status', 'CANCELED_BY_STAFF', 'the same key replays the stored response');
+  'p790-cancel-key-0001', 'DUPLICATE_REGISTRATION') ->> 'status', 'CANCELED_BY_STAFF', 'the same key replays the stored response');
 select is(pg_temp.err($$ select public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790101', 'SECRETO-INTERNO llamó por teléfono',
-  'ADMINISTRATIVE', 'p790-cancel-key-0001') $$) ->> 'code', 'IDEMPOTENCY_CONFLICT', 'the same key with another category is an idempotency conflict');
+  'p790-cancel-key-0001', 'ADMINISTRATIVE') $$) ->> 'code', 'IDEMPOTENCY_CONFLICT', 'the same key with another category is an idempotency conflict');
 reset role;
 
 select is((select count(*) from infra.outbox_event where effect_key = 'RegistrationRequestCanceledByStaff:70000000-0000-4000-8000-000000790101'),
@@ -202,8 +202,8 @@ reset role;
 select is(private.enqueue_registration_request_canceled_messages(pg_temp.event_id('109')), '{"enqueued": 1}'::jsonb, 'and the buyer is emailed');
 select is((select m.render_context_snapshot ->> 'reason_label' from app.communication_message m where m.dedupe_key = pg_temp.msg('109')),
   'Otro motivo', 'with the default category label');
-select is((select count(*) from pg_proc where proname = 'staff_bulk_cancel_registration_requests' and pronamespace = 'public'::regnamespace), 2::bigint,
-  'the public bulk command exists as the 722 (4 args) and the new (5 args) signature');
+select is((select count(*) from pg_proc where proname in ('staff_bulk_cancel_registration_requests', 'staff_cancel_registration_request') and pronamespace = 'public'::regnamespace), 2::bigint,
+  'each cancel command has exactly one public signature (791); the category is an optional last parameter');
 
 -- ===========================================================================================
 -- A3. No email for the buyer's own cancel, the worker's expiry or a request that staff cannot cancel
@@ -225,7 +225,7 @@ select is((select count(*) from infra.outbox_event where event_type = 'Registrat
 -- Staff cancel of an EXPIRED request is allowed and notifies (J2: PENDING or EXPIRED).
 set local role authenticated;
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000790002", "role": "authenticated"}';
-select is(public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790105', 'Venció', 'ADMINISTRATIVE', 'p790-cancel-key-0105') ->> 'status',
+select is(public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790105', 'Venció', 'p790-cancel-key-0105', 'ADMINISTRATIVE') ->> 'status',
   'CANCELED_BY_STAFF', 'staff cancel the EXPIRED R105');
 reset role;
 select is((select count(*) from infra.outbox_event where effect_key = 'RegistrationRequestCanceledByStaff:70000000-0000-4000-8000-000000790105'), 1::bigint,
@@ -238,9 +238,9 @@ set local role authenticated;
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000790002", "role": "authenticated"}';
 select is(pg_temp.err($$ select public.registration_request_cancel_notification('70000000-0000-4000-8000-000000790106') $$) -> 'detail' ->> 'reason',
   'not_canceled_by_staff', 'there is no outcome for a request that is still pending');
-select is(public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790102', 'Solicitud del comprador', 'PARTICIPANT_REQUEST', 'p790-cancel-key-0102') ->> 'status',
+select is(public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790102', 'Solicitud del comprador', 'p790-cancel-key-0102', 'PARTICIPANT_REQUEST') ->> 'status',
   'CANCELED_BY_STAFF', 'staff cancel R102 (buyer with no email)');
-select is(public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790103', 'Solicitud del comprador', 'PARTICIPANT_REQUEST', 'p790-cancel-key-0103') ->> 'status',
+select is(public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790103', 'Solicitud del comprador', 'p790-cancel-key-0103', 'PARTICIPANT_REQUEST') ->> 'status',
   'CANCELED_BY_STAFF', 'and R103');
 reset role;
 -- The suppression of 103's contact point (the consumer creates the contact point; do it the same way).
@@ -298,7 +298,7 @@ select is(pg_temp.sv($q$ select status from app.admin_task where task_key = 'reg
 -- Authority.
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000790003", "role": "authenticated"}';
 select is(pg_temp.err($$ select public.registration_request_cancel_notification('70000000-0000-4000-8000-000000790102') $$) ->> 'code', 'FORBIDDEN', 'a CHECKIN cannot read the outcome');
-select is(pg_temp.err($$ select public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790106', 'x', 'OTHER', 'p790-cancel-key-0106') $$) ->> 'code', 'FORBIDDEN',
+select is(pg_temp.err($$ select public.staff_cancel_registration_request('70000000-0000-4000-8000-000000790106', 'x', 'p790-cancel-key-0106', 'OTHER') $$) ->> 'code', 'FORBIDDEN',
   'nor cancel a request');
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000790004", "role": "authenticated"}';
 select is(pg_temp.err($$ select public.registration_request_cancel_notification('70000000-0000-4000-8000-000000790102') $$) ->> 'code', 'FORBIDDEN',
@@ -313,11 +313,11 @@ reset role;
 set local role authenticated;
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000790002", "role": "authenticated"}';
 select is(pg_temp.err($$ select public.staff_bulk_cancel_registration_requests('50000000-0000-4000-8000-000000790001',
-  array['70000000-0000-4000-8000-000000790106']::uuid[], 'x', 'NOPE', 'p790-bulk-key-0000') $$) -> 'detail' ->> 'field', 'reason_category', 'a bulk call validates the category');
+  array['70000000-0000-4000-8000-000000790106']::uuid[], 'x', 'p790-bulk-key-0000', 'NOPE') $$) -> 'detail' ->> 'field', 'reason_category', 'a bulk call validates the category');
 insert into ids select 'bulk', public.staff_bulk_cancel_registration_requests('50000000-0000-4000-8000-000000790001',
   array['70000000-0000-4000-8000-000000790106', '70000000-0000-4000-8000-000000790107', '70000000-0000-4000-8000-000000790108',
         '70000000-0000-4000-8000-000000790104', '70000000-0000-4000-8000-000000790201']::uuid[],
-  'SECRETO-LOTE motivo interno', 'EVENT_CHANGE', 'p790-bulk-key-0001');
+  'SECRETO-LOTE motivo interno', 'p790-bulk-key-0001', 'EVENT_CHANGE');
 reset role;
 select is((select (value ->> 'canceled_count') || '/' || (value ->> 'rejected_count') from ids where name = 'bulk'), '2/3',
   'the batch cancels the two pending requests and rejects the CONFIRMED, the buyer-canceled and the other Edition''s');
@@ -360,7 +360,7 @@ select is(pg_temp.err($$ select public.registration_request_cancel_notifications
   'an OPERATOR scoped to another Edition cannot read the batch outcome');
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000790003", "role": "authenticated"}';
 select is(pg_temp.err($$ select public.staff_bulk_cancel_registration_requests('50000000-0000-4000-8000-000000790001',
-  array['70000000-0000-4000-8000-000000790201']::uuid[], 'x', 'OTHER', 'p790-bulk-key-0002') $$) ->> 'code', 'FORBIDDEN', 'a CHECKIN cannot bulk cancel with a category either');
+  array['70000000-0000-4000-8000-000000790201']::uuid[], 'x', 'p790-bulk-key-0002', 'OTHER') $$) ->> 'code', 'FORBIDDEN', 'a CHECKIN cannot bulk cancel with a category either');
 reset role;
 
 -- The 722 four-argument bulk signature still works and defaults the category.

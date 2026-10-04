@@ -144,7 +144,7 @@ select is(pg_temp.err(format($$ select public.staff_bulk_cancel_registration_req
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000722014", "role": "authenticated"}';
 select is(pg_temp.err(format($$ select public.staff_bulk_cancel_registration_requests('50000000-0000-4000-8000-000000722001', array[%L]::uuid[], 'x', 'p722-bulk-key-0003') $$,
   pg_temp.rid('r2'))) ->> 'code', 'FORBIDDEN', 'an OPERATOR scoped to another Edition cannot bulk cancel this one (SEC-020)');
-select is(has_function_privilege('anon', 'public.staff_bulk_cancel_registration_requests(uuid, uuid[], text, text)', 'execute'), false, 'anon has no EXECUTE');
+select is(has_function_privilege('anon', 'public.staff_bulk_cancel_registration_requests(uuid, uuid[], text, text, text)', 'execute'), false, 'anon has no EXECUTE');
 
 set local "request.jwt.claims" = '{"sub": "00000000-0000-4000-8000-000000722012", "role": "authenticated"}';
 select is(pg_temp.err($$ select public.staff_bulk_cancel_registration_requests('50000000-0000-4000-8000-000000722999', array[gen_random_uuid()], 'x') $$) ->> 'code', 'NOT_FOUND',
