@@ -1,6 +1,7 @@
 import { errorMessage, retryAfterSeconds } from "@/lib/client/account-errors";
 import type { ApiFailure } from "@/lib/client/api";
 import type { RegistrationCandidate } from "@/lib/shared/registration-context";
+import { CAPTCHA_COPY, captchaFailureOf, type CaptchaFailure } from "./captcha";
 import { fieldReasonMessage, reasonsMessage } from "./copy";
 import type { StepId } from "./model";
 
@@ -31,6 +32,8 @@ export type FailureAction = {
   existingRequestId: string | null;
   /** The same payload may be replayed with the same Idempotency-Key (transport failure), or needs a new key. */
   keepIdempotencyKey: boolean;
+  /** OD-P2-01: the 422 asked for (or rejected) the ALTCHA proof; the flow solves the fresh challenge it carries, keeps the same Idempotency-Key. */
+  captcha: CaptchaFailure | null;
 };
 
 type Issue = {
@@ -64,6 +67,7 @@ function emptyAction(banner: FailureAction["banner"]): FailureAction {
     accountBlocked: false,
     existingRequestId: null,
     keepIdempotencyKey: false,
+    captcha: null,
   };
 }
 
@@ -128,6 +132,20 @@ const WINDOW_COPY: Record<string, string> = {
  */
 export function interpretCreateFailure(failure: ApiFailure, order: readonly RegistrationCandidate[]): FailureAction {
   const code = failure.code;
+
+  // Anti-hoarding (OD-P2-01): a 422 BUSINESS_RULE_VIOLATION keyed on details.reason BEFORE the generic mapping below. Nothing the person
+  // typed is lost and the Idempotency-Key is kept, so the solved resubmit is the same user action (contract A.1.3).
+  const captcha = captchaFailureOf(failure);
+  if (captcha) {
+    const action = emptyAction({
+      tone: "warning",
+      title: captcha.reason === "captcha_invalid" ? CAPTCHA_COPY.invalid : "Falta verificar que eres una persona",
+      body: captcha.reason === "captcha_invalid" ? "Estamos preparando una verificación nueva; cuando esté lista, vuelve a enviar." : CAPTCHA_COPY.required,
+    });
+    action.captcha = captcha;
+    action.keepIdempotencyKey = true;
+    return action;
+  }
 
   if (code === "AUTH_REQUIRED") {
     const action = emptyAction({ tone: "warning", title: "Tu sesión terminó", body: "Inicia sesión de nuevo: conservamos lo que ya elegiste en este navegador." });

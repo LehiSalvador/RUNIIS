@@ -12,6 +12,7 @@ import type { RegistrationContext } from "@/lib/shared/registration-context";
 import { focusControl, participantScope } from "./bits";
 import { fieldControlId } from "./dynamic-field";
 import { blockedState } from "./logic/availability";
+import { captchaBlocksSubmit, captchaFailureOf } from "./logic/captcha";
 import { clearDraft, clearDraftsOfOtherAccounts, loadDraft, saveDraft } from "./logic/draft-storage";
 import { bannerToShow, describeRefreshFailure, interpretCreateFailure, type BannerTone, type FailureAction } from "./logic/errors";
 import {
@@ -47,6 +48,8 @@ import { StepDetails } from "./step-details";
 import { StepLegal } from "./step-legal";
 import { StepParticipants } from "./step-participants";
 import { StepReview } from "./step-review";
+import { CaptchaPanel } from "./captcha-panel";
+import { useRegistrationCaptcha } from "./use-registration-captcha";
 import { BlockedView, EditionHeader, ExistingRegistrations, SessionExpiredAlert } from "./status-views";
 
 const STEPPER_STEPS: StepperStep[] = [...STEP_IDS.map((id) => ({ id, label: STEP_LABELS[id] })), { id: "result", label: "Resultado" }];
@@ -106,6 +109,12 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
   const idempotency = React.useRef<{ key: string; signature: string } | null>(null);
   const focusAfterRender = React.useRef<string | "heading" | null>(null);
   const editionId = ctx.edition.edition_id;
+  const blocked = blockedState(ctx, formatInEditionZone(ctx.edition.timezone));
+  // OD-P2-01: only a WhatsApp Edition can ever challenge (FREE never probes), and only the review step needs the answer.
+  const captcha = useRegistrationCaptcha({
+    editionId,
+    enabled: step === "review" && ctx.edition.registration_mode === "EXTERNAL_WHATSAPP" && !outcome && !ctx.existing.pending_request && !blocked,
+  });
 
   // Restore what this tab already typed (session expired / reload) FOR THIS ACCOUNT, then keep it saved. The account is
   // read from the API first; drafts of any other account in this tab are purged. Storage may be absent.
@@ -292,7 +301,18 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
     submittingRef.current = true;
     setSubmitting(true);
     setBanner(null);
-    const result = await apiFetch<OutcomeRequest>("/api/v1/registration-requests", { method: "POST", body, idempotencyKey: idempotency.current.key });
+    const key = idempotency.current.key;
+    // The solved ALTCHA payload (only when the server asked for it) rides in the same body and is never kept: it is single use.
+    const post = (altcha: string | null) =>
+      apiFetch<OutcomeRequest>("/api/v1/registration-requests", { method: "POST", body: altcha ? { ...body, altcha } : body, idempotencyKey: key });
+    const sent = captcha.takePayload();
+    let result = await post(sent);
+    if (!result.ok && !sent) {
+      // Stale page or deep link that skipped the probe: the 422 carries a fresh challenge. Solve it and resubmit the SAME body with the
+      // SAME Idempotency-Key (one user action, nothing the person entered is lost; contract A.1.3).
+      const asked = captchaFailureOf(result);
+      if (asked?.reason === "captcha_required" && asked.challenge && (await captcha.solve(asked.challenge))) result = await post(captcha.takePayload());
+    }
     submittingRef.current = false;
     setSubmitting(false);
     if (result.ok) {
@@ -304,7 +324,12 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
       window.scrollTo({ top: 0 });
       return;
     }
-    applyFailure(interpretCreateFailure(result, order));
+    const action = interpretCreateFailure(result, order);
+    applyFailure(action);
+    // A challenge is single use: prepare a fresh one for the next attempt (the 422 carries it) or ask the server again, because a
+    // request that failed for another reason keeps its clearance and then needs no new solve.
+    if (action.captcha?.challenge) void captcha.solve(action.captcha.challenge);
+    else captcha.recheck();
   }
 
   async function restart() {
@@ -321,7 +346,6 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
   // ---- Which screen ----
   const pendingExisting = ctx.existing.pending_request;
   const shownRequest = outcome ?? pendingExisting;
-  const blocked = blockedState(ctx, formatInEditionZone(ctx.edition.timezone));
   const detailsErrors = attempted.has("details") ? mergeDetailsErrors(validateDetails(ctx, draft), serverErrors) : mergeDetailsErrors({}, serverErrors);
   const currentIndex = STEP_IDS.indexOf(step);
   const reviewBlocked = step === "review" ? submitBlockedReason(ctx, draft) : null;
@@ -389,6 +413,9 @@ export function RegistrationFlow({ initialContext, slug }: { initialContext: Reg
                 retryAt={retryAt}
                 onRetryReady={() => setRetryAt(null)}
                 blockedReason={reviewBlocked}
+                captchaPanel={<CaptchaPanel state={captcha.state} onRetry={captcha.recheck} />}
+                captchaBlocked={captchaBlocksSubmit(captcha.state)}
+                captchaPhase={captcha.state.phase === "error" ? `error-${captcha.state.kind}` : captcha.state.phase}
                 onEdit={goTo}
                 onSubmit={() => void submit()}
               />

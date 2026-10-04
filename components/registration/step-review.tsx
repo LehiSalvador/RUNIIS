@@ -33,6 +33,9 @@ export function StepReview({
   retryAt,
   onRetryReady,
   blockedReason,
+  captchaPanel,
+  captchaBlocked = false,
+  captchaPhase,
   onEdit,
   onSubmit,
 }: {
@@ -43,6 +46,11 @@ export function StepReview({
   retryAt: string | null;
   onRetryReady: () => void;
   blockedReason: string | null;
+  /** OD-P2-01 anti-hoarding panel (renders nothing unless the server asked for a challenge) and whether it holds the submit back. */
+  captchaPanel?: React.ReactNode;
+  captchaBlocked?: boolean;
+  /** Phase of the challenge, exposed on the submit button so a stuck submit is diagnosable (tests, support) without a visible panel. */
+  captchaPhase?: string;
   onEdit: (step: StepId) => void;
   onSubmit: () => void;
 }) {
@@ -151,8 +159,10 @@ export function StepReview({
         </div>
       ) : null}
 
+      {captchaPanel}
+
       <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
-        <Button size="lg" onClick={onSubmit} loading={submitting} disabled={Boolean(blockedReason) || rateLimited} className="w-full sm:w-auto sm:min-w-64">
+        <Button size="lg" onClick={onSubmit} loading={submitting} disabled={Boolean(blockedReason) || rateLimited || captchaBlocked} data-captcha-state={captchaPhase} className="w-full sm:w-auto sm:min-w-64">
           {free ? <ShieldCheck className="size-5" aria-hidden="true" /> : <Clock className="size-5" aria-hidden="true" />}
           {free ? "Confirmar inscripción" : "Apartar mis lugares"}
         </Button>
