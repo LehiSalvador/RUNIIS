@@ -36,3 +36,13 @@ condition = "AND"
 targetRules = ["generic-api-key"]
 commits = ["8daff0b8557859c1c715838c1b0144e739e8ab72"]
 paths = ['''tests/e2e/harness/plumbing\.spec\.ts$''']
+
+# Known history finding: commit bcd9b6f carried a synthetic idempotency key literal ("key-12345678") in a unit
+# test of the API client; an idempotency key is a request de-duplication token, not a credential, and the next
+# commit builds it at runtime. Narrow on purpose: this exact commit AND this exact file AND the generic rule.
+[[allowlists]]
+description = "Synthetic idempotency key literal in the API client unit test at commit bcd9b6f (no secret)"
+condition = "AND"
+targetRules = ["generic-api-key"]
+commits = ["bcd9b6f6bafa0ae888a4bca46f85e6e6ea8aedf3"]
+paths = ['''tests/unit/server/client-api-put.test.ts$''']
