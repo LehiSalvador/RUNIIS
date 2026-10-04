@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { isPublicMediaKey } from "@/lib/shared/media-url";
 
 // Output schemas mirror the jsonb projections in supabase/migrations/20260928100[0-4]00_30[0-4]_*.sql
 // exactly (private.*_projection): an unexpected key fails closed as INTERNAL_ERROR instead of
@@ -400,15 +401,18 @@ const locationFields = {
   sort_order: z.int().min(0).max(10000).optional(),
 };
 export const createLocationBodySchema = z.strictObject(locationFields);
+// P3-M: an optional value is cleared by sending it as null; an absent key means unchanged. Required values (location_type, name, is_primary,
+// sort_order) stay non-nullable. Coordinates are one pair: send both, or null on either one to clear the whole point (a lone number is
+// refused by the database with VALIDATION_ERROR on longitude).
 export const updateLocationBodySchema = z.strictObject({
   location_type: locationFields.location_type.optional(),
   name: locationFields.name.optional(),
-  address_line: locationFields.address_line,
-  city: locationFields.city,
-  state_region: locationFields.state_region,
-  country_code: locationFields.country_code,
-  latitude: locationFields.latitude,
-  longitude: locationFields.longitude,
+  address_line: locationFields.address_line.nullable(),
+  city: locationFields.city.nullable(),
+  state_region: locationFields.state_region.nullable(),
+  country_code: locationFields.country_code.nullable(),
+  latitude: locationFields.latitude.nullable(),
+  longitude: locationFields.longitude.nullable(),
   is_primary: locationFields.is_primary,
   sort_order: locationFields.sort_order,
 });
@@ -441,14 +445,16 @@ const scheduleItemFields = {
   status: z.enum(["ACTIVE", "CANCELED"]).optional(),
 };
 export const createScheduleItemBodySchema = z.strictObject(scheduleItemFields);
+// P3-M: description, times, modality and location are cleared with null (absent = unchanged); title, local_date, sort_order and status
+// stay non-nullable. An end time without a start time is refused by the database (must_follow_start), so clear both in one PATCH.
 export const updateScheduleItemBodySchema = z.strictObject({
   title: scheduleItemFields.title.optional(),
-  description: scheduleItemFields.description,
+  description: scheduleItemFields.description.nullable(),
   local_date: scheduleItemFields.local_date.optional(),
-  local_start_time: scheduleItemFields.local_start_time,
-  local_end_time: scheduleItemFields.local_end_time,
-  modality_id: scheduleItemFields.modality_id,
-  location_id: scheduleItemFields.location_id,
+  local_start_time: scheduleItemFields.local_start_time.nullable(),
+  local_end_time: scheduleItemFields.local_end_time.nullable(),
+  modality_id: scheduleItemFields.modality_id.nullable(),
+  location_id: scheduleItemFields.location_id.nullable(),
   sort_order: scheduleItemFields.sort_order,
   status: scheduleItemFields.status,
 });
@@ -715,6 +721,81 @@ export const adminEventSchema = eventSchema.extend({
       updated_at: timestamp,
     }),
   ),
+});
+
+// ---- Schedule revision history (P3-M, Master 29) ----
+
+export const scheduleRevisionHistoryItemSchema = z.strictObject({
+  edition_schedule_revision_id: id,
+  revision: z.int().min(1),
+  schedule_state: z.enum(["POSTPONED_NO_NEW_DATE", "DATE_CONFIRMED_TIME_PENDING", "DATE_TIME_CONFIRMED"]),
+  local_date: dateStr.nullable(),
+  local_start_time: timeStr.nullable(),
+  local_end_time: timeStr.nullable(),
+  timezone: z.string(),
+  effective_start_at: timestamp.nullable(),
+  effective_end_at: timestamp.nullable(),
+  reason: z.string().nullable(),
+  created_at: timestamp,
+  superseded_at: timestamp.nullable(),
+  is_current: z.boolean(),
+  // Opaque staff_member_id: staff carry no display name in the schema (identity is auth.users) and nothing else about the actor is exposed.
+  created_by_staff_id: id,
+});
+
+export const scheduleRevisionHistorySchema = z.strictObject({
+  items: z.array(scheduleRevisionHistoryItemSchema),
+  total: z.int().min(0),
+  next_cursor: z.strictObject({ revision: z.int().min(1) }).nullable(),
+});
+
+export const scheduleRevisionHistoryQuerySchema = z.strictObject({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+// ---- Media asset references (P3-M, Master 52) ----
+
+const mediaStatus = z.enum(["PENDING", "PUBLISHED", "ARCHIVED"]);
+
+export const mediaAssetSchema = z.strictObject({
+  event_media_asset_id: id,
+  edition_id: id,
+  media_type: z.string(),
+  storage_object_key: z.string(),
+  alt_text: z.string(),
+  status: mediaStatus,
+  sort_order: z.int(),
+  focal_point: z.record(z.string(), z.unknown()).nullable(),
+  created_at: timestamp,
+  updated_at: timestamp,
+});
+
+export const mediaAssetListSchema = z.strictObject({
+  items: z.array(mediaAssetSchema),
+  next_cursor: z.strictObject({ sort_order: z.int(), event_media_asset_id: id }).nullable(),
+});
+
+export const mediaAssetListQuerySchema = z.strictObject({
+  status: mediaStatus.optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+// A reference, not an upload: storage_object_key is the Cloudinary public id of an asset that already exists (the shape
+// lib/shared/media-url.ts can deliver; an https URL is refused). Content blocks can only use a PUBLISHED asset.
+export const createMediaAssetBodySchema = z.strictObject({
+  media_type: z.enum(["IMAGE"]),
+  storage_object_key: z
+    .string()
+    .trim()
+    .min(1)
+    .max(255)
+    .refine(isPublicMediaKey, { message: "Not a plain storage object key (no scheme, host or .. segment)" }),
+  alt_text: z.string().trim().min(1).max(300),
+  status: z.enum(["PENDING", "PUBLISHED"]).optional(),
+  sort_order: z.int().min(0).max(10000).optional(),
+  focal_point: z.strictObject({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).nullable().optional(),
 });
 
 // ---- Anti-hoarding policy (P3-D RPCs, P3-L HTTP surface) ----

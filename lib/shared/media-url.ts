@@ -8,13 +8,18 @@ const CLOUD_NAME = /^[a-z0-9-]{1,64}$/i;
 
 export type MediaTransform = { width: number; aspect?: "4:3" | "16:9" | "1.91:1" };
 
+/** True for a plain storage object key (Cloudinary public id): no scheme, host or `..` segment. Same rule the admin API applies to references. */
+export function isPublicMediaKey(storageObjectKey: string): boolean {
+  return PUBLIC_ID.test(storageObjectKey) && !storageObjectKey.split("/").includes("..");
+}
+
 export function cloudinaryCloudName(): string | null {
   const cloud = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ?? null;
   return cloud && CLOUD_NAME.test(cloud) ? cloud : null;
 }
 
 export function publicMediaUrl(storageObjectKey: string, transform: MediaTransform, cloud = cloudinaryCloudName()): string | null {
-  if (!cloud || !PUBLIC_ID.test(storageObjectKey) || storageObjectKey.split("/").includes("..")) return null;
+  if (!cloud || !isPublicMediaKey(storageObjectKey)) return null;
   const width = Math.min(Math.max(Math.round(transform.width), 16), 2400);
   const parts = ["f_auto", "q_auto", "c_fill", "g_auto", `w_${width}`];
   if (transform.aspect) parts.push(`ar_${transform.aspect}`);

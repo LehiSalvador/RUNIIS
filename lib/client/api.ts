@@ -19,7 +19,7 @@ export type ApiFailure = {
 export type ApiResult<T, M extends JsonObject = JsonObject> = { ok: true; status: number; data: T; meta: M } | ApiFailure;
 
 export type ApiRequest = {
-  method?: "GET" | "POST" | "PATCH" | "DELETE";
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   body?: unknown;
   /** Sent as Idempotency-Key; create one per user intent (not per retry) with newIdempotencyKey(). */
   idempotencyKey?: string;

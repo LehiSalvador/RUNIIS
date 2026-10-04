@@ -31,6 +31,8 @@ import {
   legalVersionPublishResultSchema,
   legalVersionSchema,
   locationSchema,
+  mediaAssetListSchema,
+  mediaAssetSchema,
   modalitySchema,
   modalityCapacityResultSchema,
   modalityStatusResultSchema,
@@ -39,6 +41,7 @@ import {
   publicLegalDocumentSchema,
   registrationFormSchema,
   scheduleItemSchema,
+  scheduleRevisionHistorySchema,
   setScheduleResultSchema,
 } from "./contracts";
 import type { z } from "zod";
@@ -195,6 +198,87 @@ export async function setEditionSchedule(supabase: SupabaseClient, editionId: st
     { p_edition_id: editionId, p_command: "SET_SCHEDULE", p_expected_updated_at: expected, p_input: input, p_idempotency_key: null },
     setScheduleResultSchema,
   );
+}
+
+// ---- Schedule revision history (P3-M, Master 29) ----
+
+export async function adminListScheduleRevisions(supabase: SupabaseClient, editionId: string, filters: { cursor?: string; limit?: number }) {
+  const page = await callRpc(
+    supabase,
+    "admin_list_schedule_revisions",
+    { p_edition_id: editionId, p_cursor_revision: decodeRevisionCursor(filters.cursor), p_limit: filters.limit ?? 20 },
+    scheduleRevisionHistorySchema,
+  );
+  return { items: page.items, total: page.total, nextCursor: encodeCursor(page.next_cursor) };
+}
+
+function decodeRevisionCursor(cursor: string | undefined): number | null {
+  if (!cursor) return null;
+  try {
+    const decoded: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (decoded && typeof decoded === "object" && "revision" in decoded) {
+      const { revision } = decoded as { revision: unknown };
+      if (typeof revision === "number" && Number.isInteger(revision) && revision >= 1) return revision;
+    }
+  } catch {
+    // falls through to the first page, like the other cursors
+  }
+  return null;
+}
+
+function encodeCursor(next: object | null): string | null {
+  return next ? Buffer.from(JSON.stringify(next), "utf8").toString("base64url") : null;
+}
+
+// ---- Media asset references (P3-M, Master 52): list + idempotent create; no upload pipeline ----
+
+export async function adminListMediaAssets(
+  supabase: SupabaseClient,
+  editionId: string,
+  filters: { status?: string; cursor?: string; limit?: number },
+) {
+  const after = decodeMediaCursor(filters.cursor);
+  const page = await callRpc(
+    supabase,
+    "admin_list_media_assets",
+    {
+      p_edition_id: editionId,
+      p_status: filters.status ?? null,
+      p_cursor_sort_order: after.sort_order,
+      p_cursor_id: after.event_media_asset_id,
+      p_limit: filters.limit ?? 20,
+    },
+    mediaAssetListSchema,
+  );
+  return { items: page.items, nextCursor: encodeCursor(page.next_cursor) };
+}
+
+function decodeMediaCursor(cursor: string | undefined): { sort_order: number | null; event_media_asset_id: string | null } {
+  if (cursor) {
+    try {
+      const decoded: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+      if (decoded && typeof decoded === "object" && "sort_order" in decoded && "event_media_asset_id" in decoded) {
+        const { sort_order, event_media_asset_id } = decoded as { sort_order: unknown; event_media_asset_id: unknown };
+        if (typeof sort_order === "number" && Number.isInteger(sort_order) && typeof event_media_asset_id === "string") {
+          return { sort_order, event_media_asset_id };
+        }
+      }
+    } catch {
+      // falls through to the first page
+    }
+  }
+  return { sort_order: null, event_media_asset_id: null };
+}
+
+export async function createMediaAsset(supabase: SupabaseClient, editionId: string, body: JsonObject, idempotencyKey: string) {
+  const result = await callRpc(
+    supabase,
+    "create_media_asset",
+    { p_edition_id: editionId, p_input: body, p_idempotency_key: idempotencyKey },
+    mediaAssetSchema,
+  );
+  logEvent("info", "event_media_asset_created", { edition_id: editionId, event_media_asset_id: result.event_media_asset_id });
+  return result;
 }
 
 // ---- Edition transitions ----
