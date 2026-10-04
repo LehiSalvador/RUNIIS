@@ -22,6 +22,10 @@ export const scanOutcomeSchema = z.enum([
 ]);
 export type ScanOutcome = z.output<typeof scanOutcomeSchema>;
 
+// P3-Q (D1): what staff need to verify a guardian in person, nothing else (never email, phone, DOB or ids).
+// Present only for a minor whose verification is not yet VERIFIED; null otherwise.
+export const guardianIdentitySchema = z.strictObject({ display_name: z.string().nullable(), relationship_type: z.string() });
+
 export const participantMinimalSchema = z.strictObject({
   registration_id: id,
   registration_number: z.string(),
@@ -33,6 +37,7 @@ export const participantMinimalSchema = z.strictObject({
   category: z.strictObject({ category_id: id, name: z.string() }).nullable(),
   is_minor: z.boolean(),
   guardian_state: z.enum(["PENDING", "VERIFIED", "REJECTED"]).nullable(),
+  guardian: guardianIdentitySchema.nullable(),
 });
 export type ParticipantMinimal = z.output<typeof participantMinimalSchema>;
 
@@ -57,9 +62,13 @@ export const guardianDecisionResultSchema = z.strictObject({
   status: z.enum(["VERIFIED", "REJECTED"]),
 });
 
+// P3-Q (D6): Master §21 defines no re-open, so REJECTED is final: is_final=true and no actions.
+export const guardianVerificationActionSchema = z.enum(["VERIFY", "REJECT"]);
 export const guardianVerificationListItemSchema = z.strictObject({
   guardian_event_verification_id: id,
   status: z.enum(["PENDING", "REJECTED"]),
+  is_final: z.boolean(),
+  actions: z.array(guardianVerificationActionSchema),
   created_at: timestamp,
   participant: participantMinimalSchema,
 });
@@ -94,15 +103,39 @@ export const changeKitAllocationSizeResultSchema = z.strictObject({
   status: z.string(),
 });
 
+// P3-Q (D2): the ids the kit desk needs (size change by allocation, reversal by active pickup).
+export const participantKitRefSchema = z.strictObject({
+  kit_allocation_id: id,
+  kit_definition_id: id,
+  kit_variant_id: id,
+  variant_label: z.string(),
+  status: z.string(),
+  kit_pickup_id: id.nullable(),
+});
+
 export const participantSearchItemSchema = z.strictObject({
   registration_id: id,
   participant_pass_id: id.nullable(),
+  public_code: z.string().nullable(),
   registration_number: z.string(),
   display_name: z.string().nullable(),
   modality: z.strictObject({ modality_id: id, name: z.string() }),
   guardian_state: z.enum(["PENDING", "VERIFIED", "REJECTED"]).nullable(),
+  kit: participantKitRefSchema.nullable(),
 });
 export const participantSearchSchema = z.strictObject({ items: z.array(participantSearchItemSchema) });
+
+// P3-Q (D3): an Edition a scanner staff member may operate (PASS_SCAN, per scope; never a DRAFT).
+export const scannerEditionSchema = z.strictObject({
+  edition_id: id,
+  name: z.string(),
+  event_name: z.string(),
+  date: z.string().nullable(),
+  timezone: z.string(),
+  state: z.string(),
+  publication_state: z.string(),
+});
+export const scannerEditionListSchema = z.strictObject({ items: z.array(scannerEditionSchema) });
 
 // ---- Route input schemas -----------------------------------------------------------------------
 

@@ -39,7 +39,15 @@ const participantPassRefSchema = z
   .strictObject({ participant_pass_id: id, public_code: z.string(), status: z.string(), has_active_credential: z.boolean() })
   .nullable();
 const kitAllocationRefSchema = z
-  .strictObject({ status: z.string(), kit_variant_id: id, variant_label: z.string() })
+  .strictObject({
+    status: z.string(),
+    kit_variant_id: id,
+    variant_label: z.string(),
+    // P3-Q (D2): reachable ids for the size-change API (allocation) and the pickup-reversal API (active DELIVERED pickup).
+    kit_allocation_id: id,
+    kit_definition_id: id,
+    kit_pickup_id: id.nullable(),
+  })
   .nullable();
 
 export const participantRowSchema = z.strictObject({

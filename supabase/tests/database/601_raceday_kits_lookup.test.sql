@@ -187,7 +187,7 @@ select is((select jsonb_array_length(public.raceday_participant_search('50000000
   'a >=3 char query finds the participant by name');
 select is((select array_agg(k order by k) from jsonb_object_keys(
     public.raceday_participant_search('50000000-0000-4000-8000-000000601001', 'Raceday Kit Guest') -> 'items' -> 0) k),
-  array['display_name', 'guardian_state', 'modality', 'participant_pass_id', 'registration_id', 'registration_number'],
+  array['display_name', 'guardian_state', 'kit', 'modality', 'participant_pass_id', 'public_code', 'registration_id', 'registration_number'],
   'SEC-024 only minimal fields are returned');
 
 reset role;

@@ -13,6 +13,7 @@ import {
   kitPickupResultSchema,
   participantSearchSchema,
   reverseKitPickupResultSchema,
+  scannerEditionListSchema,
 } from "./contracts";
 
 // Route-facing layer over the Race Day commands (supabase/migrations/2026092817*). The scan/pickup
@@ -145,5 +146,12 @@ export async function listGuardianVerifications(supabase: SupabaseClient, editio
 
 export async function participantSearch(supabase: SupabaseClient, editionId: string, query: string) {
   const page = await callRpc(supabase, "raceday_participant_search", { p_edition_id: editionId, p_query: query }, participantSearchSchema);
+  return page.items;
+}
+
+// D3: the Editions a scanner staff member may operate (PASS_SCAN per scope). Unlike the admin Editions list
+// (EVENT_CONTENT_MANAGE) this serves CHECKIN, and it never offers a DRAFT or a finished/canceled Edition.
+export async function listScannerEditions(supabase: SupabaseClient) {
+  const page = await callRpc(supabase, "raceday_list_scanner_editions", {}, scannerEditionListSchema);
   return page.items;
 }
