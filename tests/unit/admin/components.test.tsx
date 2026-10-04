@@ -156,14 +156,16 @@ describe("dashboard metrics", () => {
 });
 
 describe("edition quick links", () => {
-  test("only built routes the role can open are linked: the P3-E1/P3-E2 configuration sections, the P3-F routes, the P3-G request queue and participants and the P3-H race day surfaces are built, the rest are not yet", () => {
-    const BUILT = ["configuracion", "modalidades", "formularios", "ubicaciones", "agenda", "contenido", "ruta", "solicitudes", "participantes", "kits", "tutores", "escaner"];
-    expect(editionQuickLinks(EDITION, operator).map((link) => link.key)).toEqual(BUILT);
+  test("only built routes the role can open are linked: the P3-E1/P3-E2 configuration sections, the P3-F routes, the P3-G request queue and participants and the P3-H race day surfaces and the P3-I attendance and closure pages are built", () => {
+    const BUILT = ["configuracion", "modalidades", "formularios", "ubicaciones", "agenda", "contenido", "ruta", "solicitudes", "participantes", "kits", "tutores", "escaner", "asistencia", "cierre"];
+    // the closure is an ADMIN surface (Master section 145): an operator is linked to the attendance desk only
+    expect(editionQuickLinks(EDITION, operator).map((link) => link.key)).toEqual(BUILT.filter((key) => key !== "cierre"));
+    expect(editionQuickLinks(EDITION, [{ role: "ADMIN", scope_type: "GLOBAL", edition_id: null }]).map((link) => link.key)).toEqual(BUILT);
     for (const candidate of EDITION_LINK_CANDIDATES) expect(isRouteAvailable(candidate.route), candidate.route).toBe(BUILT.includes(candidate.key));
   });
 
   test("a section appears the moment its route is listed, and only for roles that may open it", () => {
-    const built = (route: string) => ["/admin/eventos/[editionId]/solicitudes", "/admin/cierre"].includes(route);
+    const built = (route: string) => ["/admin/eventos/[editionId]/solicitudes", "/admin/eventos/[editionId]/cierre"].includes(route);
     expect(editionQuickLinks(EDITION, operator, built).map((link) => link.key)).toEqual(["solicitudes"]);
     expect(editionQuickLinks(EDITION, operator, built)[0].href).toBe(`/admin/eventos/${EDITION}/solicitudes`);
     expect(editionQuickLinks(EDITION, checkin, built)).toEqual([]);

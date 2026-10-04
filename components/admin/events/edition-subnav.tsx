@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/client/cn";
 
-export type EditionSection = "resumen" | "configuracion" | "modalidades" | "formularios" | "ubicaciones" | "agenda" | "contenido" | "rutas" | "kits" | "tutores" | "solicitudes" | "participantes";
+export type EditionSection = "resumen" | "configuracion" | "modalidades" | "formularios" | "ubicaciones" | "agenda" | "contenido" | "rutas" | "kits" | "tutores" | "solicitudes" | "participantes" | "asistencia" | "cierre";
 
 const SECTIONS: readonly { key: EditionSection; label: string; href: (editionId: string) => string }[] = [
   { key: "resumen", label: "Resumen y estado", href: (id) => `/admin/eventos/${id}` },
@@ -17,14 +17,19 @@ const SECTIONS: readonly { key: EditionSection; label: string; href: (editionId:
   { key: "participantes", label: "Participantes", href: (id) => `/admin/eventos/${id}/participantes` },
   { key: "kits", label: "Kits", href: (id) => `/admin/eventos/${id}/kits` },
   { key: "tutores", label: "Mesa de tutores", href: (id) => `/admin/eventos/${id}/tutores` },
+  { key: "asistencia", label: "Asistencia", href: (id) => `/admin/eventos/${id}/asistencia` },
+  { key: "cierre", label: "Cierre", href: (id) => `/admin/eventos/${id}/cierre` },
 ];
 
-/** Section links of one Edition (plain links: each section is its own server-rendered page). */
-export function EditionSubnav({ editionId, current }: { editionId: string; current: EditionSection }) {
+/**
+ * Section links of one Edition (plain links: each section is its own server-rendered page). "Cierre" is an ADMIN-only surface (Master section
+ * 145), so it is listed only when the caller says the viewer may open it (`showClosure`) or when it is the current page; every other caller is unchanged.
+ */
+export function EditionSubnav({ editionId, current, showClosure = false }: { editionId: string; current: EditionSection; showClosure?: boolean }) {
   return (
     <nav aria-label="Secciones de la edición" className="-mx-1 overflow-x-auto">
       <ul className="flex min-w-max gap-1 px-1">
-        {SECTIONS.map((section) => {
+        {SECTIONS.filter((section) => section.key !== "cierre" || showClosure || current === "cierre").map((section) => {
           const active = section.key === current;
           return (
             <li key={section.key}>

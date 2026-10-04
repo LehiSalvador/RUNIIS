@@ -128,17 +128,17 @@ export const EDITION_LINK_CANDIDATES: readonly EditionLinkCandidate[] = [
     key: "asistencia",
     label: "Asistencia",
     description: "Resolución de asistencia y elegibilidad.",
-    route: "/admin/asistencia",
+    route: "/admin/eventos/[editionId]/asistencia",
     section: "asistencia",
-    href: (id) => `/admin/asistencia?edition_id=${id}`,
+    href: (id) => `/admin/eventos/${id}/asistencia`,
   },
   {
     key: "cierre",
     label: "Cierre",
     description: "Finalización y cierre administrativo.",
-    route: "/admin/cierre",
+    route: "/admin/eventos/[editionId]/cierre",
     section: "cierre",
-    href: (id) => `/admin/cierre?edition_id=${id}`,
+    href: (id) => `/admin/eventos/${id}/cierre`,
   },
 ];
 
