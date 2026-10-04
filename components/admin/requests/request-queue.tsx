@@ -1,18 +1,15 @@
 "use client";
 
 import React from "react";
-import { useRouter } from "next/navigation";
 import { Inbox, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { DataTable, type DataTableColumn } from "@/components/ui/data-table";
-import { toast } from "@/components/ui/use-toast";
-import { apiFetch } from "@/lib/client/api";
 import { formatMoney } from "@/lib/client/account-format";
-import { ConfirmDialog } from "@/components/admin/confirm-dialog";
 import { DetailDrawer } from "@/components/admin/detail-drawer";
 import { formatDateTimeShort } from "@/components/admin/format";
 import { AdminBadge } from "@/components/admin/status-badges";
+import { CancelRequestDialog } from "@/components/admin/requests/cancel-request-dialog";
 import { BulkCancelDialog } from "@/components/admin/requests/bulk-cancel-dialog";
 import { ConfirmRequestDialog } from "@/components/admin/requests/confirm-request-dialog";
 import { RequestDetail } from "@/components/admin/requests/request-detail";
@@ -41,11 +38,10 @@ import { useElapsed } from "@/components/admin/requests/use-elapsed";
  * reason, per-request results. Nothing is ever cancelled automatically and a confirmed registration is never selectable.
  */
 export function RequestQueue({ editionId, timeZone, requests }: { editionId: string; timeZone: string; requests: QueueRequest[] }) {
-  const router = useRouter();
   const elapsed = useElapsed(requests[0]?.server_time ?? "none");
   const [selectedRaw, setSelected] = React.useState<Set<string>>(new Set());
   const [confirming, setConfirming] = React.useState<{ id: string; mode: "confirm" | "revalidate" } | null>(null);
-  const [canceling, setCanceling] = React.useState<string | null>(null);
+  const [canceling, setCanceling] = React.useState<{ id: string; reference: string } | null>(null);
   const [viewing, setViewing] = React.useState<string | null>(null);
   const [bulkOpen, setBulkOpen] = React.useState(false);
 
@@ -142,7 +138,6 @@ export function RequestQueue({ editionId, timeZone, requests }: { editionId: str
   );
 
   const confirmTarget = confirming ? byId.get(confirming.id) : undefined;
-  const cancelTarget = canceling ? byId.get(canceling) : undefined;
   const viewTarget = viewing ? byId.get(viewing) : undefined;
   const bulkRequests = requests.filter((request) => selected.has(request.registration_request_id));
 
@@ -199,7 +194,7 @@ export function RequestQueue({ editionId, timeZone, requests }: { editionId: str
                 </Button>
               ) : null}
               {canCancelRequest(row) ? (
-                <Button size="sm" variant="secondary" onClick={() => setCanceling(row.registration_request_id)}>
+                <Button size="sm" variant="secondary" onClick={() => setCanceling({ id: row.registration_request_id, reference: row.public_reference })}>
                   Cancelar<span className="sr-only"> {row.public_reference}</span>
                 </Button>
               ) : null}
@@ -210,22 +205,7 @@ export function RequestQueue({ editionId, timeZone, requests }: { editionId: str
 
       {confirmTarget && confirming ? <ConfirmRequestDialog key={confirmTarget.registration_request_id} request={confirmTarget} mode={confirming.mode} onClose={() => setConfirming(null)} /> : null}
 
-      <ConfirmDialog
-        open={cancelTarget !== undefined}
-        onOpenChange={(open) => !open && setCanceling(null)}
-        title={`Cancelar la solicitud ${cancelTarget?.public_reference ?? ""}`}
-        description="La solicitud se cancela y sus lugares apartados vuelven a estar disponibles. No se envía correo al comprador: si hace falta, avísale por WhatsApp."
-        confirmLabel="Cancelar solicitud"
-        tone="danger"
-        reason={{ label: "Motivo (interno)", required: true, minLength: 3, helper: "Queda en la auditoría. El comprador no lo ve." }}
-        onConfirm={({ reason, idempotencyKey }) =>
-          apiFetch(`/api/v1/admin/registration-requests/${cancelTarget!.registration_request_id}/cancel`, { method: "POST", body: { reason }, idempotencyKey })
-        }
-        onDone={() => {
-          toast({ tone: "success", title: "Solicitud cancelada", description: "Los lugares apartados se liberaron." });
-          router.refresh();
-        }}
-      />
+      {canceling ? <CancelRequestDialog key={canceling.id} requestId={canceling.id} reference={canceling.reference} onClose={() => setCanceling(null)} /> : null}
 
       <DetailDrawer
         open={viewTarget !== undefined}
@@ -253,7 +233,7 @@ export function RequestQueue({ editionId, timeZone, requests }: { editionId: str
                   variant="secondary"
                   onClick={() => {
                     setViewing(null);
-                    setCanceling(viewTarget.registration_request_id);
+                    setCanceling({ id: viewTarget.registration_request_id, reference: viewTarget.public_reference });
                   }}
                 >
                   Cancelar solicitud

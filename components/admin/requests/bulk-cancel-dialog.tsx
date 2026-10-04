@@ -8,9 +8,17 @@ import { Modal, ModalActions, ModalClose, ModalContent } from "@/components/ui/m
 import { toast } from "@/components/ui/use-toast";
 import { apiFetch, newIdempotencyKey, type ApiFailure } from "@/lib/client/api";
 import { bulkCancelResultSchema, type BulkCancelResult } from "@/lib/shared/registration";
+import { SelectField } from "@/components/admin/events/fields";
 import { AdminBadge } from "@/components/admin/status-badges";
 import { useReturnFocus } from "@/components/admin/use-return-focus";
 import { RequestFailureNotice } from "@/components/admin/requests/failure-notice";
+import {
+  BUYER_EMAIL_NOTICE,
+  BUYER_NOTIFICATION_SHORT,
+  REQUEST_CANCEL_CATEGORY_OPTIONS,
+  followUpCount,
+  validateRequestCancel,
+} from "@/components/admin/requests/request-cancel-logic";
 import {
   BULK_OUTCOME_SPEC,
   bulkOutcomeText,
@@ -26,7 +34,8 @@ import {
  *  2. the call, under ONE Idempotency-Key per intent (a network retry or a 429 retry replays it; it is renewed only for a new decision);
  *  3. the per-request results (partial success is normal): canceled, already canceled, not cancelable (with its current status),
  *     not found, failed. Nothing is reported as canceled until the server says so for that id.
- * The reason stays internal: the buyer is not emailed by this command, which the dialog says plainly.
+ * The reason stays internal: every buyer whose request is canceled IS emailed (P3-S) with the category chosen here, and the per-request
+ * result shows the email outcome (queued, suppressed, no contact); the dialog says so plainly before the click.
  */
 export function BulkCancelDialog({
   editionId,
@@ -95,6 +104,7 @@ function BulkBody({
   const router = useRouter();
   const reasonId = React.useId();
   const [reason, setReason] = React.useState("");
+  const [category, setCategory] = React.useState("");
   const [touched, setTouched] = React.useState(false);
   const [pending, setPending] = React.useState(false);
   const [failure, setFailure] = React.useState<ApiFailure | null>(null);
@@ -102,10 +112,12 @@ function BulkBody({
   const references = new Map(requests.map((request) => [request.registration_request_id, request.public_reference]));
   const trimmed = reason.trim();
   const reasonError = touched && trimmed.length === 0 ? "Escribe el motivo: queda en la auditoría." : null;
+  const decision = validateRequestCancel({ category, reason });
+  const categoryError = touched && !decision.ok ? decision.errors.category : undefined;
 
   async function submit() {
     setTouched(true);
-    if (pendingRef.current || trimmed.length === 0) return;
+    if (pendingRef.current || !decision.ok) return;
     pendingRef.current = true;
     setPending(true);
     setFailure(null);
@@ -113,7 +125,7 @@ function BulkBody({
       const response = await apiFetch<unknown>(`/api/v1/admin/editions/${editionId}/registration-requests/bulk-cancel`, {
         method: "POST",
         idempotencyKey: key,
-        body: { request_ids: requests.map((request) => request.registration_request_id), reason: trimmed },
+        body: { request_ids: requests.map((request) => request.registration_request_id), reason: decision.reason, reason_category: decision.category },
       });
       if (!response.ok) {
         setFailure(response);
@@ -151,10 +163,20 @@ function BulkBody({
                   {BULK_OUTCOME_SPEC[row.outcome].label}
                 </AdminBadge>
                 {row.outcome === "NOT_CANCELABLE" || row.outcome === "FAILED" ? <span className="text-caption text-ink-60">{bulkOutcomeText(row)}</span> : null}
+                {row.outcome === "CANCELED" && row.notification ? (
+                  <span className="text-caption text-ink-80" data-testid={`bulk-notification-${row.notification.status}`}>
+                    {BUYER_NOTIFICATION_SHORT[row.notification.status]}
+                  </span>
+                ) : null}
               </span>
             </li>
           ))}
         </ul>
+        {followUpCount(result.results) > 0 ? (
+          <p className="mt-2 text-body-sm text-ink" data-testid="bulk-follow-up">
+            {followUpCount(result.results)} {followUpCount(result.results) === 1 ? "comprador no puede recibir el correo" : "compradores no pueden recibir el correo"}: avísales por otro medio. Cada uno tiene una tarea de seguimiento abierta.
+          </p>
+        ) : null}
         {result.failed_count > 0 ? (
           <p className="mt-2 text-body-sm text-ink-80">Las solicitudes con error siguen seleccionadas: ciérralo y vuelve a cancelarlas.</p>
         ) : null}
@@ -178,9 +200,27 @@ function BulkBody({
           </li>
         ))}
       </ul>
-      <p className="mt-3 text-body-sm text-ink-80">
-        El motivo es interno y queda en la auditoría. Esta acción no envía correo al comprador: si quieres avisarle, hazlo por WhatsApp.
-      </p>
+      <div className="mt-3 rounded-control border border-warning-border bg-warning-tint px-3 py-2 text-body-sm text-ink" data-testid="bulk-cancel-notice">
+        <ul className="list-disc space-y-1 pl-5">
+          <li>
+            <strong>{BUYER_EMAIL_NOTICE.email}</strong> A cada comprador le llega un correo por su solicitud.
+          </li>
+          <li>
+            <strong>{BUYER_EMAIL_NOTICE.payments}</strong>
+          </li>
+        </ul>
+      </div>
+      <div className="mt-3">
+        <SelectField
+          id="bulk-cancel-category"
+          label="Categoría del motivo (la ve el comprador)"
+          required
+          value={category}
+          error={categoryError}
+          options={[{ value: "", label: "Elige una categoría" }, ...REQUEST_CANCEL_CATEGORY_OPTIONS]}
+          onChange={(event) => setCategory(event.target.value)}
+        />
+      </div>
       <div className="mt-3 flex flex-col gap-1.5">
         <label htmlFor={reasonId} className="text-label font-semibold text-ink">
           Motivo (interno)

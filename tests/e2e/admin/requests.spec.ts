@@ -320,10 +320,23 @@ test.describe("request queue (OPERATOR)", () => {
     await expandRow(page, seed.requests.cancel.reference);
     await page.getByRole("button", { name: `Cancelar ${seed.requests.cancel.reference}` }).click();
     const dialog = page.getByRole("dialog");
-    await expect(dialog).toContainText("No se envía correo al comprador");
-    await expect(dialog.getByRole("button", { name: "Cancelar solicitud" })).toBeDisabled();
+    // P3-S: the buyer IS emailed (category label only) and no payment is handled on the platform; the dialog says so before the click
+    await expect(dialog.getByTestId("request-cancel-notice")).toContainText("Se enviará un correo al comprador");
+    await expect(dialog.getByTestId("request-cancel-notice")).toContainText("no procesa pagos");
+    await expect(dialog).not.toContainText("No se envía correo");
+    // category and reason are both required: nothing is sent while the form is incomplete
+    await dialog.getByRole("button", { name: "Cancelar solicitud" }).click();
+    await expect(dialog.getByText("Elige la categoría: es lo que verá el comprador en su correo.")).toBeVisible();
+    await expect(dialog.getByText("Escribe el motivo interno: queda en la auditoría.")).toBeVisible();
+    expect(dbStatus(seed.requests.cancel.requestId)).toBe("PENDING_CONFIRMATION");
+    await dialog.getByLabel(/Categoría del motivo/).selectOption("ADMINISTRATIVE");
     await dialog.getByLabel(/Motivo \(interno\)/).fill("Comprobante falso");
     await dialog.getByRole("button", { name: "Cancelar solicitud" }).click();
+    // the server confirmed: the outcome shows the buyer's email result (queued, suppressed or no contact), never before
+    const outcome = dialog.getByTestId("request-cancel-outcome");
+    await expect(outcome).toContainText("La solicitud quedó cancelada");
+    await expect(outcome.locator('[data-testid^="request-notification-"]')).toHaveCount(1);
+    await dialog.getByRole("button", { name: "Listo" }).click();
     await expect(dialog).toHaveCount(0);
     await expect.poll(() => statusOf(page, seed.requests.cancel.reference)).toBe("CANCELED_BY_STAFF");
     expect(psql(`select count(*) from app.registration_hold where registration_request_id = '${seed.requests.cancel.requestId}' and status = 'ACTIVE'`)).toBe("0");
@@ -341,12 +354,15 @@ test.describe("request queue (OPERATOR)", () => {
 
     const dialog = page.getByRole("dialog");
     await expect(dialog.getByTestId("bulk-count")).toContainText("Se cancelarán 2 solicitudes · 3 lugares se liberan");
-    await expect(dialog).toContainText("no envía correo al comprador");
+    await expect(dialog.getByTestId("bulk-cancel-notice")).toContainText("Se enviará un correo al comprador");
+    await expect(dialog.getByTestId("bulk-cancel-notice")).toContainText("no procesa pagos");
     await shot("bulk-confirm");
     await a11y();
     // the reason is required
     await dialog.getByRole("button", { name: "Cancelar 2 solicitudes" }).click();
     await expect(dialog.getByText("Escribe el motivo")).toBeVisible();
+    await expect(dialog.getByText("Elige la categoría: es lo que verá el comprador en su correo.")).toBeVisible();
+    await dialog.getByLabel(/Categoría del motivo/).selectOption("ADMINISTRATIVE");
     await dialog.getByLabel(/Motivo \(interno\)/).fill("Cuentas nuevas apartando en bloque");
 
     // the first attempt hits the per-staff mutation limit: shown as "wait", retried with the SAME Idempotency-Key
@@ -381,6 +397,8 @@ test.describe("request queue (OPERATOR)", () => {
     await expect(results).toContainText(a);
     await expect(results).toContainText(b);
     await expect(results.getByText("Cancelada", { exact: true })).toHaveCount(2);
+    // every canceled request carries the buyer's email outcome from the server
+    await expect(results.locator('[data-testid^="bulk-notification-"]')).toHaveCount(2);
     await shot("bulk-results");
     await dialog.getByRole("button", { name: "Listo" }).click();
     await expect.poll(() => statusOf(page, a)).toBe("CANCELED_BY_STAFF");
@@ -409,12 +427,14 @@ test.describe("request queue (OPERATOR)", () => {
 
     await page.getByRole("button", { name: /Cancelar seleccionadas \(2\)/ }).click();
     const dialog = page.getByRole("dialog");
+    await dialog.getByLabel(/Categoría del motivo/).selectOption("ADMINISTRATIVE");
     await dialog.getByLabel(/Motivo \(interno\)/).fill("Acaparamiento confirmado por el equipo");
     await dialog.getByRole("button", { name: "Cancelar 2 solicitudes" }).click();
     await expect(dialog.getByTestId("bulk-summary")).toContainText("1 cancelada, 1 ya estaba cancelada de 2");
     const results = dialog.getByTestId("bulk-results");
     await expect(results.getByText("Cancelada", { exact: true })).toHaveCount(1);
     await expect(results.getByText("Ya estaba cancelada")).toHaveCount(1);
+    await expect(results.locator('[data-testid^="bulk-notification-"]')).toHaveCount(1); // only the request this batch canceled has an email outcome
     await shot("bulk-partial");
     await dialog.getByRole("button", { name: "Listo" }).click();
     expect(dbStatus(seed.requests.hoarder.requestId)).toBe("CANCELED_BY_STAFF");
