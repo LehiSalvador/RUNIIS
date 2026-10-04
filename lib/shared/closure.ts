@@ -181,6 +181,21 @@ export const registrationStatusSchema = z.strictObject({
   cancel_reason: z.string().nullable(),
 });
 
+/**
+ * OWN-04 outcome of the cancellation email (P3SECA-06). `queued`: the participant (the buyer for a Guest) will be emailed by the outbox;
+ * `suppressed`: their contact is on the suppression list; `no_contact`: no email contact point exists; `unknown`: the outcome could not be
+ * read right now (the cancellation itself succeeded). For `suppressed` and `no_contact` an ACTION_REQUIRED task for staff follow-up is open
+ * (`follow_up_task_id`, task_key `registration-cancel-notice:{registration_id}`, category COMMUNICATIONS).
+ */
+export const CANCEL_NOTIFICATION_STATUSES = ["queued", "suppressed", "no_contact", "unknown"] as const;
+export const cancelNotificationSchema = z.strictObject({
+  status: z.enum(CANCEL_NOTIFICATION_STATUSES),
+  follow_up_task_id: id.nullable(),
+});
+
+/** POST /admin/registrations/:id/cancel response: the registration status plus the notification outcome (additive; the other keys are unchanged). */
+export const cancelRegistrationResultSchema = registrationStatusSchema.extend({ notification: cancelNotificationSchema });
+
 export const changeModalityResultSchema = z.strictObject({
   registration_id: id,
   modality_id: id,
@@ -204,6 +219,8 @@ export type CloseEditionResult = z.output<typeof closeEditionResultSchema>;
 export type ReopenFinalizationResult = z.output<typeof reopenFinalizationResultSchema>;
 export type ReopenEditionResult = z.output<typeof reopenEditionResultSchema>;
 export type RegistrationStatus = z.output<typeof registrationStatusSchema>;
+export type CancelNotification = z.output<typeof cancelNotificationSchema>;
+export type CancelRegistrationResult = z.output<typeof cancelRegistrationResultSchema>;
 export type ChangeModalityResult = z.output<typeof changeModalityResultSchema>;
 
 // ---- Request bodies (strict: unknown fields are rejected). Bounds mirror the SQL validators. ----

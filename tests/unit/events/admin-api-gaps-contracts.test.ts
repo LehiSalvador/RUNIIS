@@ -111,6 +111,10 @@ describe("anti-hoarding policy contracts (P3-AC-13)", () => {
       new_account_hold_share_percent: 10,
       new_account_hold_min_places: 10,
       single_buyer_hold_places: 10,
+      total_hold_share_percent: 50,
+      total_hold_min_places: 20,
+      modality_hold_share_percent: 70,
+      modality_hold_min_places: 10,
       updated_at: token,
     };
     expect(antiHoardingPolicySchema.parse(policy)).toEqual(policy);
@@ -121,6 +125,13 @@ describe("anti-hoarding policy contracts (P3-AC-13)", () => {
     expect(updateAntiHoardingPolicyBodySchema.parse({ captcha_new_account_hours: 48 })).toEqual({ captcha_new_account_hours: 48 });
     expect(updateAntiHoardingPolicyBodySchema.parse({ new_account_hold_share_percent: 12.5 })).toEqual({ new_account_hold_share_percent: 12.5 });
     expect(() => updateAntiHoardingPolicyBodySchema.parse({})).toThrow();
+    expect(updateAntiHoardingPolicyBodySchema.parse({ total_hold_share_percent: 40, modality_hold_min_places: 5 })).toEqual({
+      total_hold_share_percent: 40,
+      modality_hold_min_places: 5,
+    });
+    expect(() => updateAntiHoardingPolicyBodySchema.parse({ total_hold_share_percent: 0 })).toThrow();
+    expect(() => updateAntiHoardingPolicyBodySchema.parse({ modality_hold_share_percent: 100.5 })).toThrow();
+    expect(() => updateAntiHoardingPolicyBodySchema.parse({ total_hold_min_places: 0 })).toThrow();
     expect(() => updateAntiHoardingPolicyBodySchema.parse({ captcha_new_account_hours: 0 })).toThrow();
     expect(() => updateAntiHoardingPolicyBodySchema.parse({ captcha_new_account_hours: 169 })).toThrow();
     expect(() => updateAntiHoardingPolicyBodySchema.parse({ large_hold_min_places: 1 })).toThrow();

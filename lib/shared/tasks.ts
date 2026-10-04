@@ -33,6 +33,7 @@ export const TASK_SOURCE_RULES = [
   "closure-integrity", // integrity issue (CLOSURE_BLOCKER when the case blocks closure)
   "provider-reconciliation", // provider reconciliation (platform-wide)
   "hold-concentration", // OD-P2-01 hoarding alert
+  "registration-cancel-notice", // OWN-04: the cancellation email could not go out (no contact / suppressed)
   "communication-critical-failure", // communication failure
   "communication-quota-exhausted",
   "outbox-escalated",

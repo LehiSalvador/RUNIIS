@@ -832,6 +832,11 @@ export const antiHoardingPolicySchema = z.strictObject({
   new_account_hold_share_percent: z.number(),
   new_account_hold_min_places: z.int(),
   single_buyer_hold_places: z.int(),
+  // P3-R (P3SECA-01): hold-concentration against total capacity (any account age) and per modality.
+  total_hold_share_percent: z.number(),
+  total_hold_min_places: z.int(),
+  modality_hold_share_percent: z.number(),
+  modality_hold_min_places: z.int(),
   updated_at: timestamp,
 });
 
@@ -843,6 +848,10 @@ export const updateAntiHoardingPolicyBodySchema = z
     new_account_hold_share_percent: z.number().min(0.01).max(100).optional(),
     new_account_hold_min_places: z.int().min(1).max(100000).optional(),
     single_buyer_hold_places: z.int().min(2).max(20).optional(),
+    total_hold_share_percent: z.number().min(0.01).max(100).optional(),
+    total_hold_min_places: z.int().min(1).max(100000).optional(),
+    modality_hold_share_percent: z.number().min(0.01).max(100).optional(),
+    modality_hold_min_places: z.int().min(1).max(100000).optional(),
   })
   .refine((body) => Object.keys(body).length > 0, { message: "At least one policy field is required" });
 

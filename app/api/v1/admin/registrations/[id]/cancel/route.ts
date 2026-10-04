@@ -8,6 +8,8 @@ import { cancelRegistrationBodySchema } from "@/lib/shared/closure";
 // (SEC-020). Allowed on a CONFIRMED registration until attendance is finalized; afterwards 422 CLOSURE_BLOCKED (reopen first).
 // Frees capacity, cancels the pass, reviews the kit, reverses an active credit and emails the participant (the buyer for a
 // Guest) through the outbox: the email carries `reason_category` only, never the free-text `reason`.
+// P3SECA-06: the response also carries `notification: { status: queued | suppressed | no_contact | unknown, follow_up_task_id }`; for
+// suppressed / no_contact an ACTION_REQUIRED task (`registration-cancel-notice:{registration}`) is open for staff follow-up (OWN-04 still always notifies).
 export const POST = defineRoute(
   {
     auth: { staff: ["ADMIN", "OPERATOR"] },

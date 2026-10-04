@@ -2,7 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import type { JsonObject } from "@/lib/shared/api-contract";
-import { changeModalityResultSchema, registrationStatusSchema, type CancelReasonCategory } from "@/lib/shared/closure";
+import { cancelNotificationSchema, changeModalityResultSchema, registrationStatusSchema, type CancelNotification, type CancelReasonCategory } from "@/lib/shared/closure";
 import {
   REGISTRATION_CAPTCHA_PURPOSE,
   bulkCancelResultSchema,
@@ -18,7 +18,7 @@ import {
 } from "@/lib/shared/registration-context";
 import { buildWhatsAppUrl } from "@/lib/shared/whatsapp";
 import { AppError } from "../../http/errors";
-import { decodeCursor, encodeCursor } from "../../http/pagination";
+import { cursorTimestampSchema, decodeCursor, encodeCursor } from "../../http/pagination";
 import { logEvent } from "../../log";
 import { callRpc } from "../../rpc";
 import { createSystemClient } from "../../supabase/clients";
@@ -53,7 +53,7 @@ function withWhatsAppUrl<T extends RegistrationRequestView>(view: T): T & { what
 // locking, capacity and eligibility live in the database; these functions add committed rate-limit
 // pre-checks (A6), cursor encoding, strict result validation and the post-commit credential step (A1).
 
-const requestCursorSchema = z.strictObject({ created_at: z.string().min(1), id: z.guid() });
+const requestCursorSchema = z.strictObject({ created_at: cursorTimestampSchema, id: z.guid() });
 const participantCursorSchema = z.strictObject({ sort_name: z.string(), id: z.guid() });
 const precheckSchema = z.object({ allowed: z.literal(true) });
 
@@ -443,8 +443,30 @@ export async function cancelConfirmedRegistration(
     },
     registrationStatusSchema,
   );
-  logEvent("info", "registration_canceled_by_staff", { registration_id: registrationId, reason_category: body.reason_category ?? "OTHER" });
-  return result;
+  const notification = await cancelNotificationOutcome(supabase, registrationId);
+  logEvent("info", "registration_canceled_by_staff", {
+    registration_id: registrationId,
+    reason_category: body.reason_category ?? "OTHER",
+    notification: notification.status,
+  });
+  return { ...result, notification };
+}
+
+const cancelNotificationRowSchema = z.strictObject({ status: z.enum(["queued", "suppressed", "no_contact"]), follow_up_task_id: z.guid().nullable(), task_result: z.string().nullable() });
+
+/**
+ * OWN-04 (P3SECA-06): whether the participant will be emailed about the cancellation, and the staff follow-up task when they cannot be.
+ * Evaluated after the cancellation committed (the email itself is sent later by the outbox consumer, which opens the same task), so a failure
+ * here must not turn a successful cancellation into an error: it is reported as `unknown` and the consumer remains the backstop.
+ */
+async function cancelNotificationOutcome(supabase: SupabaseClient, registrationId: string): Promise<CancelNotification> {
+  try {
+    const row = await callRpc(supabase, "registration_cancel_notification", { p_registration_id: registrationId }, cancelNotificationRowSchema);
+    return cancelNotificationSchema.parse({ status: row.status, follow_up_task_id: row.follow_up_task_id });
+  } catch {
+    logEvent("warn", "registration_cancel_notification_unavailable", { registration_id: registrationId });
+    return { status: "unknown", follow_up_task_id: null };
+  }
 }
 
 export async function changeRegistrationModality(
