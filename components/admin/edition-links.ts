@@ -1,5 +1,5 @@
 import { isRouteAvailable } from "@/components/shell/nav-availability";
-import { canAccessSection, hasRoleForEdition, NAV_ACCESS, type StaffAssignment } from "@/components/admin/access";
+import { canAccessSection, hasRoleForEdition, NAV_ACCESS, type StaffAssignment, type StaffRole } from "@/components/admin/access";
 import type { AdminNavKey } from "@/components/shell/admin-nav-items";
 
 /**
@@ -17,6 +17,11 @@ export type EditionLinkCandidate = {
   route: string;
   /** Nav section whose role matrix gates the link. */
   section: AdminNavKey;
+  /**
+   * Race day surfaces are used by roles that have no nav section of their own (the scanner and the guardian desk are open to CHECKIN). When
+   * set, THIS list gates the link (any assignment of one of these roles covering the Edition) instead of the section's matrix.
+   */
+  roles?: readonly StaffRole[];
   href: (editionId: string) => string;
 };
 
@@ -96,10 +101,28 @@ export const EDITION_LINK_CANDIDATES: readonly EditionLinkCandidate[] = [
   {
     key: "kits",
     label: "Kits",
-    description: "Definiciones, inventario y entrega.",
-    route: "/admin/kits",
+    description: "Definiciones, tallas, inventario y entrega.",
+    route: "/admin/eventos/[editionId]/kits",
     section: "kits",
-    href: (id) => `/admin/kits?edition_id=${id}`,
+    href: (id) => `/admin/eventos/${id}/kits`,
+  },
+  {
+    key: "tutores",
+    label: "Mesa de tutores",
+    description: "Verificar en persona al guardián de cada menor.",
+    route: "/admin/eventos/[editionId]/tutores",
+    section: "eventos",
+    roles: ["ADMIN", "OPERATOR", "CHECKIN"],
+    href: (id) => `/admin/eventos/${id}/tutores`,
+  },
+  {
+    key: "escaner",
+    label: "Escáner de acceso",
+    description: "Check-in y entrega de kits con la cámara o un lector.",
+    route: "/scanner",
+    section: "eventos",
+    roles: ["ADMIN", "OPERATOR", "CHECKIN"],
+    href: () => "/scanner",
   },
   {
     key: "asistencia",
@@ -129,9 +152,10 @@ export function editionQuickLinks(
 ): EditionLink[] {
   return candidates
     .filter((candidate) => routeAvailable(candidate.route))
-    .filter(
-      (candidate) =>
-        canAccessSection(assignments, candidate.section) && hasRoleForEdition(assignments, NAV_ACCESS[candidate.section], editionId),
+    .filter((candidate) =>
+      candidate.roles
+        ? hasRoleForEdition(assignments, candidate.roles, editionId)
+        : canAccessSection(assignments, candidate.section) && hasRoleForEdition(assignments, NAV_ACCESS[candidate.section], editionId),
     )
     .map((candidate) => ({
       key: candidate.key,

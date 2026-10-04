@@ -156,8 +156,8 @@ describe("dashboard metrics", () => {
 });
 
 describe("edition quick links", () => {
-  test("only built routes the role can open are linked: the P3-E1 and P3-E2 configuration sections are built, the rest are not yet", () => {
-    const BUILT = ["configuracion", "modalidades", "formularios", "ubicaciones", "agenda", "contenido"];
+  test("only built routes the role can open are linked: the P3-E1/P3-E2 configuration sections and the P3-H race day surfaces are built, the rest are not yet", () => {
+    const BUILT = ["configuracion", "modalidades", "formularios", "ubicaciones", "agenda", "contenido", "kits", "tutores", "escaner"];
     expect(editionQuickLinks(EDITION, operator).map((link) => link.key)).toEqual(BUILT);
     for (const candidate of EDITION_LINK_CANDIDATES) expect(isRouteAvailable(candidate.route), candidate.route).toBe(BUILT.includes(candidate.key));
   });
@@ -176,6 +176,16 @@ describe("edition quick links", () => {
     const built = () => true;
     expect(editionQuickLinks(EDITION, scoped, built).length).toBeGreaterThan(0);
     expect(editionQuickLinks("5b000000-0000-4000-8000-00000000000b", scoped, built)).toEqual([]);
+  });
+
+  test("race day surfaces are gated by their own role list: CHECKIN gets the guardian desk and the scanner, never the kit centre", () => {
+    const built = () => true;
+    const keys = (assignments: StaffAssignment[]) => editionQuickLinks(EDITION, assignments, built).map((link) => link.key);
+    expect(keys(checkin)).toEqual(["tutores", "escaner"]);
+    expect(keys(operator)).toEqual(expect.arrayContaining(["kits", "tutores", "escaner"]));
+    expect(keys([{ role: "MODERATOR", scope_type: "GLOBAL", edition_id: null }])).toEqual([]);
+    expect(editionQuickLinks(EDITION, checkin, built).find((link) => link.key === "escaner")?.href).toBe("/scanner");
+    expect(editionQuickLinks(EDITION, operator, built).find((link) => link.key === "kits")?.href).toBe(`/admin/eventos/${EDITION}/kits`);
   });
 });
 
