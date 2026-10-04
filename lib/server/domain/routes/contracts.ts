@@ -12,6 +12,12 @@ const id = z.guid();
 const timestamp = z.string().min(1);
 
 const MAX_GEOMETRY_POINTS = 200_000;
+
+/**
+ * Request-body cap of PATCH /route-revisions/:id and POST /routes/:id/revisions (P3-F-10): equal to GPX_MAX_REQUEST_BODY_BYTES (import-gpx), below the
+ * 4.5 MB Vercel platform limit (a platform 413 would happen before the handler). tests/unit/routes/gpx-contract.test.ts asserts both stay equal.
+ */
+export const ROUTE_REVISION_MAX_BODY_BYTES = 4_400_000;
 const MAX_POIS = 200;
 
 export const poiTypeSchema = z.enum(["START", "FINISH", "HYDRATION", "MEDICAL", "CHECKPOINT", "RESTROOM", "VIEWPOINT", "OTHER"]);

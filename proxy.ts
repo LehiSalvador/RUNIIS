@@ -28,7 +28,7 @@ export async function proxy(request: NextRequest) {
     csp = buildPublicCsp(reportUrl);
   } else {
     const nonce = crypto.randomUUID().replace(/-/g, "");
-    csp = buildCsp(nonce, reportUrl);
+    csp = buildCsp(nonce, reportUrl, { mapBasemap: isStaffRouteEditorPath(pathname) });
     requestHeaders.set("x-nonce", nonce);
   }
   const referrerPolicy = isNoReferrerPath(pathname) ? "no-referrer" : null;
@@ -128,6 +128,16 @@ export function isNoReferrerPath(pathname: string): boolean {
   return NO_REFERRER_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
 }
 
+// P3-F-11: the staff route editor (/admin/eventos/:editionId/rutas) draws the OpenFreeMap basemap with the same MapLibre stack as the public
+// Event page. Only that page family may reach the tile origin; the rest of /admin and every other session surface keeps `connect-src 'self'`.
+// The UI enables the basemap with NEXT_PUBLIC_ADMIN_MAP_BASEMAP=1 (non-secret public flag); the CSP depends on the path only.
+const STAFF_ROUTE_EDITOR_RE = /^\/admin\/eventos\/[^/]+\/rutas(?:\/|$)/;
+
+/** `/admin/eventos/:editionId/rutas` and anything beneath it; normalised like the public allowlist so case/encoding variants cannot dodge or widen it. */
+export function isStaffRouteEditorPath(pathname: string): boolean {
+  return STAFF_ROUTE_EDITOR_RE.test(normalizePath(pathname));
+}
+
 function imgSrc(): string {
   // blob: is needed for client-rendered SVGs shown via an object URL (e.g. the pass QR view).
   return process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ? "'self' data: blob: https://res.cloudinary.com" : "'self' data: blob:";
@@ -157,7 +167,7 @@ export function buildPublicCsp(reportUrl: string): string {
   ].join("; ");
 }
 
-export function buildCsp(nonce: string, reportUrl: string): string {
+export function buildCsp(nonce: string, reportUrl: string, options: { mapBasemap?: boolean } = {}): string {
   return [
     "default-src 'self'",
     `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'${DEV_EVAL}`,
@@ -165,7 +175,7 @@ export function buildCsp(nonce: string, reportUrl: string): string {
     "style-src 'self' 'unsafe-inline'",
     `img-src ${imgSrc()}`,
     "font-src 'self'",
-    "connect-src 'self'",
+    options.mapBasemap ? `connect-src 'self' ${MAP_TILE_ORIGIN}` : "connect-src 'self'",
     // P3-M: the ALTCHA solver runs in a same-origin module Worker. Without an explicit directive the worker falls back
     // to script-src, whose 'strict-dynamic' makes browsers ignore 'self'. This only allows workers from our own origin; script-src is unchanged.
     "worker-src 'self'",
