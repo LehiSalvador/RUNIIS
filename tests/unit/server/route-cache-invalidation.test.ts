@@ -20,6 +20,9 @@ vi.mock("@/lib/server/auth/actor", async (importOriginal) => ({
   resolveActor: mocks.resolveActor,
 }));
 
+// The staff mutation actor pre-check (P3SECA-03) is an RPC through the session client; its behaviour is covered by handler.test.ts and the integration suite.
+vi.mock("@/lib/server/http/rate-limit", () => ({ consumeStaffMutationRateLimit: vi.fn(async () => undefined) }));
+
 const eventsService = vi.hoisted(() => ({
   transitionEdition: vi.fn(),
   updateEdition: vi.fn(),

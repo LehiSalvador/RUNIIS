@@ -4,8 +4,9 @@ import { defineRoute } from "@/lib/server/http/handler";
 
 // KIT_PICKUP_RECORD (ADMIN, OPERATOR, CHECKIN). Scan (credential_token) or manual/third-party
 // (registration_id) delivery; always 200 + `outcome`, a duplicate scan never delivers twice (Master §89).
+// actorRateLimit: false -- the race-day desk keeps its own raceday.* limiter (P3SECA-03); the shared staff pre-check must not throttle the desk.
 export const POST = defineRoute(
-  { auth: { staff: ["ADMIN", "OPERATOR", "CHECKIN"] }, input: { body: kitPickupBodySchema }, idempotency: "optional" },
+  { auth: { staff: ["ADMIN", "OPERATOR", "CHECKIN"] }, input: { body: kitPickupBodySchema }, idempotency: "optional", actorRateLimit: false },
   async ({ supabase, input, idempotency }) => ({
     data: await recordKitPickup(supabase, {
       editionId: input.body.edition_id,

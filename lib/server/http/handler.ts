@@ -10,6 +10,7 @@ import { createSessionClient } from "../supabase/clients";
 import { errorResponse, successResponse } from "./envelope";
 import { AppError, toAppError } from "./errors";
 import { computeRequestHash, readIdempotencyKey, type IdempotencyInput, type IdempotencyMode } from "./idempotency";
+import { consumeStaffMutationRateLimit } from "./rate-limit";
 import { newRequestId, REQUEST_ID_HEADER, runWithRequestId } from "./request-id";
 import { isCrossSiteMutation } from "./same-origin";
 
@@ -43,6 +44,11 @@ export type RouteOptions<A extends AuthLevel, I extends InputSchemas, M extends 
   input?: I;
   idempotency?: M;
   maxBodyBytes?: number;
+  /**
+   * Staff mutation routes (non-GET/HEAD) run the shared `admin.mutation` actor rate-limit pre-check after the auth guard
+   * (P3SECA-03). Pass `false` only where another limiter already covers the route (race-day check-in).
+   */
+  actorRateLimit?: false;
 };
 
 type NextRouteHandler = (request: NextRequest, context: { params: Promise<RouteParams> }) => Promise<Response>;
@@ -73,6 +79,9 @@ export function defineRoute<
           const supabase = await createSessionClient();
           const actor = await resolveActor(supabase);
           assertAuthLevel(actor, options.auth, rawParams);
+          if (isStaffMutation(options.auth, request.method) && options.actorRateLimit !== false) {
+            await consumeStaffMutationRateLimit(supabase);
+          }
           auth = { actor, supabase };
         }
 
@@ -89,6 +98,10 @@ export function defineRoute<
       }
     });
   };
+}
+
+function isStaffMutation(level: AuthLevel, method: string): boolean {
+  return typeof level === "object" && method !== "GET" && method !== "HEAD" && method !== "OPTIONS";
 }
 
 function allowedOrigins(request: NextRequest): string[] {

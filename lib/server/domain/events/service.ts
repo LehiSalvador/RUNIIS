@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { JsonObject } from "@/lib/shared/api-contract";
 import { logEvent } from "../../log";
+import { isCursorTimestamp } from "../../http/pagination";
 import { callRpc, mapRpcError } from "../../rpc";
 import {
   adminEditionEditorSchema,
@@ -92,7 +93,7 @@ function decodeEventCursor(cursor: string): { created_at: string | null; event_i
     const decoded: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
     if (decoded && typeof decoded === "object" && "created_at" in decoded && "event_id" in decoded) {
       const { created_at, event_id } = decoded as { created_at: unknown; event_id: unknown };
-      if (typeof created_at === "string" && typeof event_id === "string") return { created_at, event_id };
+      if (typeof created_at === "string" && isCursorTimestamp(created_at) && typeof event_id === "string") return { created_at, event_id };
     }
   } catch {
     // falls through to the first page, like the Editions cursor
@@ -142,7 +143,7 @@ function decodeEditionCursor(cursor: string): { created_at: string | null; editi
     const decoded: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
     if (decoded && typeof decoded === "object" && "created_at" in decoded && "edition_id" in decoded) {
       const { created_at, edition_id } = decoded as { created_at: unknown; edition_id: unknown };
-      if (typeof created_at === "string" && typeof edition_id === "string") return { created_at, edition_id };
+      if (typeof created_at === "string" && isCursorTimestamp(created_at) && typeof edition_id === "string") return { created_at, edition_id };
     }
   } catch {
     // falls through to invalid

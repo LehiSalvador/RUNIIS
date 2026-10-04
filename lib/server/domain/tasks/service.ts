@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
-import { decodeCursor, encodeCursor } from "../../http/pagination";
+import { cursorTimestampSchema, decodeCursor, encodeCursor } from "../../http/pagination";
 import { logEvent } from "../../log";
 import { callRpc } from "../../rpc";
 import {
@@ -20,7 +20,7 @@ import {
 // and the CLOSURE_BLOCKER rule (the root condition is re-evaluated, the task row is never trusted) live in the database. This layer
 // validates the RPC result shape, encodes cursors, adds the root-object link hint and logs ids only (never reasons).
 
-const cursorSchema = z.strictObject({ rank: z.int(), detected_at: z.string().min(1), id: z.guid() });
+const cursorSchema = z.strictObject({ rank: z.int(), detected_at: cursorTimestampSchema, id: z.guid() });
 
 function withRoot<T extends z.output<typeof taskSchema>>(task: T): T & { root: TaskView["root"] } {
   return { ...task, root: taskRoot(task) };

@@ -125,13 +125,13 @@ export async function signOut(): Promise<void> {
 }
 
 // ---- Staff role management (Master §144-145; SEC-021/022) ----
+// The `admin.mutation` actor pre-check (SEC-141) is applied by defineRoute to every staff mutation route (P3SECA-03).
 
 export async function listStaffRoles(supabase: SupabaseClient) {
   return callRpc(supabase, "list_staff_roles", {}, staffRosterSchema);
 }
 
 export async function grantStaffRole(supabase: SupabaseClient, body: z.output<typeof staffGrantBodySchema>) {
-  await consumeActorRateLimit(supabase, "admin.mutation");
   const result = await callRpc(
     supabase,
     "grant_staff_role",
@@ -143,7 +143,6 @@ export async function grantStaffRole(supabase: SupabaseClient, body: z.output<ty
 }
 
 export async function revokeStaffRole(supabase: SupabaseClient, roleAssignmentId: string) {
-  await consumeActorRateLimit(supabase, "admin.mutation");
   const result = await callRpc(supabase, "revoke_staff_role", { p_role_assignment_id: roleAssignmentId }, staffRevokeResultSchema);
   logEvent("info", "staff_role_revoked", { staff_role_assignment_id: result.staff_role_assignment_id });
   return result;
