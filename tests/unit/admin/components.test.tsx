@@ -156,8 +156,8 @@ describe("dashboard metrics", () => {
 });
 
 describe("edition quick links", () => {
-  test("only built routes the role can open are linked: the P3-E1/P3-E2 configuration sections and the P3-H race day surfaces are built, the rest are not yet", () => {
-    const BUILT = ["configuracion", "modalidades", "formularios", "ubicaciones", "agenda", "contenido", "kits", "tutores", "escaner"];
+  test("only built routes the role can open are linked: the P3-E1/P3-E2 configuration sections, the P3-F routes and the P3-H race day surfaces are built, the rest are not yet", () => {
+    const BUILT = ["configuracion", "modalidades", "formularios", "ubicaciones", "agenda", "contenido", "ruta", "kits", "tutores", "escaner"];
     expect(editionQuickLinks(EDITION, operator).map((link) => link.key)).toEqual(BUILT);
     for (const candidate of EDITION_LINK_CANDIDATES) expect(isRouteAvailable(candidate.route), candidate.route).toBe(BUILT.includes(candidate.key));
   });

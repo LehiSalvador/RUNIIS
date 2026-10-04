@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/client/cn";
 
-export type EditionSection = "resumen" | "configuracion" | "modalidades" | "formularios" | "ubicaciones" | "agenda" | "contenido" | "kits" | "tutores";
+export type EditionSection = "resumen" | "configuracion" | "modalidades" | "formularios" | "ubicaciones" | "agenda" | "contenido" | "rutas" | "kits" | "tutores";
 
 const SECTIONS: readonly { key: EditionSection; label: string; href: (editionId: string) => string }[] = [
   { key: "resumen", label: "Resumen y estado", href: (id) => `/admin/eventos/${id}` },
@@ -12,6 +12,7 @@ const SECTIONS: readonly { key: EditionSection; label: string; href: (editionId:
   { key: "ubicaciones", label: "Ubicaciones", href: (id) => `/admin/eventos/${id}/ubicaciones` },
   { key: "agenda", label: "Agenda", href: (id) => `/admin/eventos/${id}/agenda` },
   { key: "contenido", label: "Contenido", href: (id) => `/admin/eventos/${id}/contenido` },
+  { key: "rutas", label: "Rutas", href: (id) => `/admin/eventos/${id}/rutas` },
   { key: "kits", label: "Kits", href: (id) => `/admin/eventos/${id}/kits` },
   { key: "tutores", label: "Mesa de tutores", href: (id) => `/admin/eventos/${id}/tutores` },
 ];

@@ -76,11 +76,11 @@ export const EDITION_LINK_CANDIDATES: readonly EditionLinkCandidate[] = [
   },
   {
     key: "ruta",
-    label: "Ruta",
+    label: "Rutas",
     description: "GPX, inicio, meta y puntos de interés.",
-    route: "/admin/eventos/[editionId]/ruta",
+    route: "/admin/eventos/[editionId]/rutas",
     section: "eventos",
-    href: (id) => `/admin/eventos/${id}/ruta`,
+    href: (id) => `/admin/eventos/${id}/rutas`,
   },
   {
     key: "solicitudes",
