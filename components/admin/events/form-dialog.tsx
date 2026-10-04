@@ -7,12 +7,14 @@ import { Modal, ModalActions, ModalClose, ModalContent } from "@/components/ui/m
 import { toast } from "@/components/ui/use-toast";
 import { newIdempotencyKey, type ApiFailure, type ApiResult } from "@/lib/client/api";
 import { RefusalNotice } from "@/components/admin/events/fields";
+import { isStaleState } from "@/components/admin/events/form-logic";
 
 /**
  * Modal form for one staff write. Contract with the server (P3-E1 invariants):
  *  - nothing is shown as saved until the API answers ok; a failure keeps the dialog open with the actionable error;
  *  - one Idempotency-Key per open, reused by retries and renewed by the next open;
- *  - on success it closes, announces the outcome and re-renders the server page (`router.refresh`).
+ *  - on success it closes, announces the outcome and re-renders the server page (`router.refresh`);
+ *  - a stale-state refusal (409 STALE_STATE) also re-renders the page behind the dialog, which stays open with the explanation.
  * The caller owns validation and the request: `onSubmit` returns the ApiResult (or null when local validation
  * failed and nothing was sent).
  */
@@ -95,6 +97,8 @@ function DialogBody({
         router.refresh();
       } else {
         setFailure(result);
+        // The Edition changed under the operator (P3-L STALE_STATE): refetch behind the dialog so the page shows the current state.
+        if (isStaleState(result)) router.refresh();
       }
     } finally {
       pendingRef.current = false;

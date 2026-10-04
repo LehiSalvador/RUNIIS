@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import { CircleAlert, CircleCheck } from "lucide-react";
 import { cn } from "@/lib/client/cn";
 
@@ -43,10 +44,13 @@ export function ReadinessChecklist({
   title,
   ready,
   checks,
+  fixFor,
 }: {
   title: string;
   ready: boolean;
   checks: readonly ReadinessCheck[];
+  /** Where a failing check is resolved (a screen of the Edition), or null when no staff screen does. Optional: other callers are unchanged. */
+  fixFor?: (code: string) => { href: string; label: string } | null;
 }) {
   const failing = checks.filter((check) => !check.ok);
   const passing = checks.filter((check) => check.ok);
@@ -79,6 +83,14 @@ export function ReadinessChecklist({
             <span className={check.ok ? "text-ink-80" : "font-semibold text-ink"}>
               <span className="sr-only">{check.ok ? "Cumple: " : "Pendiente: "}</span>
               {readinessLabel(check.code)}
+              {!check.ok && fixFor?.(check.code) ? (
+                <>
+                  {" · "}
+                  <Link href={fixFor(check.code)!.href} prefetch={false} className="font-normal underline underline-offset-2">
+                    Resolver en {fixFor(check.code)!.label}
+                  </Link>
+                </>
+              ) : null}
             </span>
           </li>
         ))}

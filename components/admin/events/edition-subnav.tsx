@@ -2,12 +2,16 @@ import React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/client/cn";
 
-export type EditionSection = "resumen" | "configuracion" | "modalidades";
+export type EditionSection = "resumen" | "configuracion" | "modalidades" | "formularios" | "ubicaciones" | "agenda" | "contenido";
 
 const SECTIONS: readonly { key: EditionSection; label: string; href: (editionId: string) => string }[] = [
   { key: "resumen", label: "Resumen y estado", href: (id) => `/admin/eventos/${id}` },
   { key: "configuracion", label: "Datos y fechas", href: (id) => `/admin/eventos/${id}/configuracion` },
   { key: "modalidades", label: "Modalidades y precios", href: (id) => `/admin/eventos/${id}/modalidades` },
+  { key: "formularios", label: "Formularios", href: (id) => `/admin/eventos/${id}/formularios` },
+  { key: "ubicaciones", label: "Ubicaciones", href: (id) => `/admin/eventos/${id}/ubicaciones` },
+  { key: "agenda", label: "Agenda", href: (id) => `/admin/eventos/${id}/agenda` },
+  { key: "contenido", label: "Contenido", href: (id) => `/admin/eventos/${id}/contenido` },
 ];
 
 /** Section links of one Edition (plain links: each section is its own server-rendered page). */

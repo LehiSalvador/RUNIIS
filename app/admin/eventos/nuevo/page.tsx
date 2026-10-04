@@ -11,7 +11,7 @@ import { isGlobalAdmin } from "@/components/admin/events/permissions";
 import { PanelsSkeleton } from "@/components/admin/skeletons";
 import { buttonVariants } from "@/components/ui/button";
 import { getActiveEventTypes } from "@/lib/server/domain/discovery/service";
-import { adminListEditions } from "@/lib/server/domain/events/service";
+import { adminListEvents } from "@/lib/server/domain/events/service";
 import { requireStaff, settle } from "@/app/admin/_lib/session";
 
 export const metadata: Metadata = { title: "Nueva edición" };
@@ -48,19 +48,43 @@ export default async function NewEditionPage() {
   );
 }
 
+const CATALOGUE_PAGE = 100;
+const CATALOGUE_PAGES = 3;
+
 async function NewEditionForm({ supabase }: { supabase: SupabaseClient }) {
-  const [types, editions] = await Promise.all([
+  const [types, catalogue] = await Promise.all([
     settle(getActiveEventTypes(), "events.new.types"),
-    // There is no "list events" API yet: the events that already have an Edition are read from the Editions list.
-    settle(adminListEditions(supabase, { limit: 100 }), "events.new.events"),
+    // The Events catalogue (P3-L): every ACTIVE Event, including those that still have no Edition. Up to three pages of 100.
+    settle(loadEventCatalogue(supabase), "events.new.events"),
   ]);
   if (!types.ok) return <ErrorNotice code={types.code} requestId={types.requestId} title="No pudimos cargar los tipos de evento." />;
-  if (!editions.ok) return <ErrorNotice code={editions.code} requestId={editions.requestId} title="No pudimos cargar los eventos." />;
+  if (!catalogue.ok) return <ErrorNotice code={catalogue.code} requestId={catalogue.requestId} title="No pudimos cargar los eventos." />;
 
-  const seen = new Map<string, EventChoice>();
-  for (const item of editions.data.items) if (!seen.has(item.event_id)) seen.set(item.event_id, { event_id: item.event_id, name: item.event_name });
-  const events = [...seen.values()].sort((a, b) => a.name.localeCompare(b.name, "es"));
+  const events: EventChoice[] = catalogue.data.items
+    .map((item) => ({
+      event_id: item.event_id,
+      name: item.name,
+      canonical_key: item.canonical_key,
+      status: item.status,
+      event_type_key: item.event_type_key,
+      event_type_name: item.event_type_name,
+      edition_count: item.edition_count,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
   const eventTypes: EventTypeChoice[] = types.data.map((type) => ({ key: type.key, name: type.name }));
 
-  return <EditionForm mode="create" events={events} eventTypes={eventTypes} />;
+  return <EditionForm mode="create" events={events} eventTypes={eventTypes} eventsTruncated={catalogue.data.truncated} />;
+}
+
+async function loadEventCatalogue(supabase: SupabaseClient) {
+  type Item = Awaited<ReturnType<typeof adminListEvents>>["items"][number];
+  const items: Item[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < CATALOGUE_PAGES; page++) {
+    const result = await adminListEvents(supabase, { status: "ACTIVE", cursor, limit: CATALOGUE_PAGE });
+    items.push(...result.items);
+    if (!result.nextCursor) return { items, truncated: false };
+    cursor = result.nextCursor;
+  }
+  return { items, truncated: true };
 }

@@ -402,6 +402,42 @@ export function sameEditionValues(a: EditionFormValues, b: EditionFormValues): b
   return (Object.keys(a) as (keyof EditionFormValues)[]).every((key) => a[key] === b[key]);
 }
 
+const FORM_FIELD_LABEL: Record<keyof EditionFormValues, string> = {
+  name: "Nombre",
+  slug: "Enlace público",
+  registration_mode: "Modo de inscripción",
+  timezone: "Zona horaria",
+  city: "Ciudad",
+  state_region: "Estado",
+  country_code: "País",
+  local_date: "Fecha de la carrera",
+  local_start_time: "Hora de inicio",
+  local_end_time: "Hora de término",
+  registration_open_at: "Apertura de inscripciones",
+  registration_close_at: "Cierre de inscripciones",
+  global_capacity: "Capacidad total",
+  whatsapp_phone_e164: "WhatsApp de la edición",
+  is_benefit_event: "Evento a beneficio",
+};
+
+/** Labels of the fields whose saved value differs between two readings of the Edition (what someone else changed). */
+export function changedEditionFieldLabels(before: EditionFormValues, after: EditionFormValues): string[] {
+  return (Object.keys(before) as (keyof EditionFormValues)[]).filter((key) => before[key] !== after[key]).map((key) => FORM_FIELD_LABEL[key]);
+}
+
+/**
+ * Three-way merge after the Edition changed under an open form (409 STALE_STATE, then a refetch): a field the operator
+ * never touched takes the fresh server value, a field they edited keeps their text. The form is then diffed against the
+ * fresh baseline, so a retry sends only what the operator actually changed on top of the current Edition.
+ */
+export function rebaseEditionValues(previousBaseline: EditionFormValues, freshBaseline: EditionFormValues, values: EditionFormValues): EditionFormValues {
+  const merged = { ...freshBaseline };
+  for (const key of Object.keys(values) as (keyof EditionFormValues)[]) {
+    if (values[key] !== previousBaseline[key]) (merged as Record<string, unknown>)[key] = values[key];
+  }
+  return merged;
+}
+
 // ---------------------------------------------------------------------------------------------
 // Server refusal, in plain language
 // ---------------------------------------------------------------------------------------------
@@ -421,6 +457,21 @@ const FIELD_NAME: Record<string, string> = {
   effective_capacity: "Capacidad",
   global_capacity: "Capacidad total",
   currency: "Moneda",
+  title: "Título",
+  description: "Descripción",
+  address_line: "Dirección",
+  city: "Ciudad",
+  latitude: "Latitud",
+  longitude: "Longitud",
+  location_type: "Tipo de ubicación",
+  location_id: "Ubicación",
+  modality_id: "Modalidad",
+  sort_order: "Orden",
+  block_type: "Tipo de bloque",
+  field_key: "Clave del campo",
+  field_type: "Tipo de campo",
+  label: "Etiqueta",
+  fields: "Campos",
 };
 
 const REASON_TEXT: Record<string, string> = {
@@ -455,10 +506,25 @@ const REASON_TEXT: Record<string, string> = {
   category_in_use: "la categoría ya tiene asignaciones; no se puede cambiar su clave.",
   capacity_below_occupation: "la capacidad quedaría por debajo de los lugares ocupados.",
   capacity_below_allocation: "la capacidad quedaría por debajo de lo ya asignado.",
+  draft_exists: "ya hay un borrador de este formulario. Edítalo o publícalo en lugar de crear otro.",
+  invalid_field_list: "la lista de campos no es válida (máximo 50).",
+  duplicate_field_key: "dos campos usan la misma clave. Cada clave debe ser única.",
+  invalid_options: "las opciones no son válidas (de 1 a 100 opciones con valor y etiqueta).",
+  duplicate_option_value: "dos opciones usan el mismo valor. Cada valor debe ser único.",
+  invalid_option_value: "el valor de la opción solo admite letras, números, punto, guion y guion bajo.",
+  coordinates_must_be_paired: "indica latitud y longitud juntas, o ninguna de las dos.",
+  link_scheme_not_allowed: "el enlace debe ser https, mailto, tel o una ruta relativa.",
+  in_use: "ya se usa en otro registro (por ejemplo una entrada de la agenda). Quita ese uso primero.",
+  invalid_list: "la lista no tiene un número de elementos válido.",
+  invalid_value: "no es un valor válido.",
+  html_not_allowed: "no admite HTML. Escribe texto simple con formato Markdown.",
+  markdown_images_not_allowed: "no admite imágenes dentro del texto. Usa un bloque de imagen.",
 };
 
 export type RefusalView = {
   view: AdminErrorView;
+  /** The Edition changed under the operator (P3-L optimistic concurrency, 409 STALE_STATE): refetch and let them review. */
+  stale: boolean;
   /** Plain-language lines from the server's own refusal reasons (never raw text). */
   reasons: string[];
   /** Readiness codes the server reported as failing (publish/open/resume). */
@@ -466,6 +532,24 @@ export type RefusalView = {
   /** Set when the server reported that lowering capacity needs an explicit acknowledgement. */
   needsCapacityAcknowledgement: { confirmed: number; activeHolds: number } | null;
 };
+
+/** True for the 409 the server answers when `expected_updated_at` no longer matches the Edition (details.reason STALE_STATE). */
+export function isStaleState(failure: Pick<ApiFailure, "code" | "details">): boolean {
+  return failure.code === "CONFLICT" && (failure.details as { reason?: unknown } | undefined)?.reason === "STALE_STATE";
+}
+
+/** "fields[2].label" -> "Campo 3 · Etiqueta"; "payload.items[0].question" -> "Elemento 1 · question"; plain names use FIELD_NAME. */
+export function humanField(field: string): string {
+  const indexed = /^(fields|payload\.items|payload\.sponsors)\[(\d+)\]\.(.+)$/.exec(field);
+  if (indexed) {
+    const noun = indexed[1] === "fields" ? "Campo" : indexed[1] === "payload.items" ? "Elemento" : "Patrocinador";
+    const leaf = indexed[3].replace(/^options\[(\d+)\]\./, "opción $1 · ");
+    return `${noun} ${Number(indexed[2]) + 1} · ${FIELD_NAME[leaf] ?? leaf}`;
+  }
+  const payload = /^payload\.(.+)$/.exec(field);
+  if (payload) return FIELD_NAME[payload[1]] ?? payload[1];
+  return FIELD_NAME[field] ?? field;
+}
 
 function sentence(text: string): string {
   return text.charAt(0).toUpperCase() + text.slice(1);
@@ -480,13 +564,27 @@ export function describeRefusal(failure: Pick<ApiFailure, "code" | "requestId" |
   const reasons: string[] = [];
   const failedChecks = Array.isArray(details.failed_checks) ? details.failed_checks.filter((code): code is string => typeof code === "string") : [];
   let needsCapacityAcknowledgement: RefusalView["needsCapacityAcknowledgement"] = null;
+  const stale = isStaleState(failure);
 
   if (reason && REASON_TEXT[reason]) {
-    const subject = field ? (FIELD_NAME[field] ?? field) : null;
+    const subject = field ? humanField(field) : null;
     reasons.push(sentence(subject && reason !== "not_ready" && reason !== "invalid_transition" ? `${subject}: ${REASON_TEXT[reason]}` : REASON_TEXT[reason]));
   }
-  if (reason === "taken") {
+  if (stale) {
+    view = {
+      ...view,
+      kind: "stale",
+      tone: "info",
+      title: "La edición cambió mientras la editabas",
+      message: "Otra persona (o tú en otra pestaña) la modificó antes de que guardaras. No se aplicó nada. Ya cargamos la versión vigente: revísala y vuelve a intentar.",
+      action: "reload",
+    };
+  } else if (reason === "taken") {
     view = { ...view, kind: "conflict", tone: "warning", title: "Ya existe", message: "Otro registro usa ese valor. Cámbialo y vuelve a guardar.", action: "fix" };
+  } else if (reason === "in_use") {
+    view = { ...view, kind: "conflict", tone: "warning", title: "Todavía se usa", message: "Otro registro depende de este. Quita primero ese uso y vuelve a intentar.", action: "none" };
+  } else if (reason === "draft_exists") {
+    view = { ...view, kind: "conflict", tone: "warning", title: "Ya hay un borrador", message: "Este formulario ya tiene un borrador abierto. Actualiza la pantalla para editarlo o publicarlo.", action: "reload" };
   } else if (reason === "invalid_transition") {
     view = { ...view, title: "La acción ya no aplica", message: "El estado de la edición cambió o no permite esta acción.", action: "reload" };
   } else if (reason === "not_ready") {
@@ -501,9 +599,9 @@ export function describeRefusal(failure: Pick<ApiFailure, "code" | "requestId" |
     reasons.push(`Hay ${confirmed} confirmados y ${activeHolds} apartados vigentes; los registros existentes no se tocan.`);
   }
   if (failure.code === "VALIDATION_ERROR" && !reason && field) {
-    reasons.push(sentence(`${FIELD_NAME[field] ?? field}: revisa el valor.`));
+    reasons.push(sentence(`${humanField(field)}: revisa el valor.`));
   }
-  return { view, reasons, failedChecks, needsCapacityAcknowledgement };
+  return { view, stale, reasons, failedChecks, needsCapacityAcknowledgement };
 }
 
 export function failedCheckLabels(codes: readonly string[]): string[] {

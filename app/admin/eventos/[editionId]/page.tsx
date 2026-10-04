@@ -12,6 +12,9 @@ import { editionQuickLinks } from "@/components/admin/edition-links";
 import { ErrorNotice } from "@/components/admin/error-notice";
 import { formatCalendarDate, formatClock, formatDateTime } from "@/components/admin/format";
 import { DefinitionList, Panel } from "@/components/admin/panel";
+import { ConfigSummary } from "@/components/admin/edition-config/config-summary";
+import { buildConfigSummary, readinessFix } from "@/components/admin/edition-config/config-model";
+import { ScheduleRevisionPanel } from "@/components/admin/edition-config/schedule-panel";
 import { EditionSubnav } from "@/components/admin/events/edition-subnav";
 import { LifecyclePanel } from "@/components/admin/events/lifecycle-panel";
 import { canManageLifecycle } from "@/components/admin/events/permissions";
@@ -98,7 +101,7 @@ async function EditionOverview({
     );
   }
 
-  const { edition, availability, readiness, modalities } = result.data;
+  const { edition, availability, readiness, modalities, registration_forms: forms, locations, agenda, content_blocks: content } = result.data;
   const zone = edition.timezone;
   const schedule = edition.schedule;
   const links = editionQuickLinks(edition.edition_id, assignments);
@@ -201,18 +204,33 @@ async function EditionOverview({
           </Panel>
         </div>
 
+        <ConfigSummary
+          items={buildConfigSummary({
+            editionId: edition.edition_id,
+            forms,
+            locations: locations.length,
+            agenda: agenda.length,
+            content,
+            readiness: [...readiness.publication.checks, ...readiness.registration.checks],
+            whatsappRequired: edition.registration_mode === "EXTERNAL_WHATSAPP",
+          })}
+        />
+
         <Panel
           title="Readiness"
           description="Todo lo que falta para publicar y para abrir inscripciones, según el servidor. Se recalcula en cada lectura."
         >
           <div className="grid gap-6 lg:grid-cols-2">
-            <ReadinessChecklist title="Publicación" ready={readiness.publication.ready} checks={readiness.publication.checks} />
-            <ReadinessChecklist title="Inscripciones" ready={readiness.registration.ready} checks={readiness.registration.checks} />
+            <ReadinessChecklist title="Publicación" ready={readiness.publication.ready} checks={readiness.publication.checks} fixFor={(code) => readinessFix(edition.edition_id, code)} />
+            <ReadinessChecklist title="Inscripciones" ready={readiness.registration.ready} checks={readiness.registration.checks} fixFor={(code) => readinessFix(edition.edition_id, code)} />
           </div>
         </Panel>
 
+        <ScheduleRevisionPanel schedule={schedule} timezone={zone} executionState={edition.execution_state} />
+
         <LifecyclePanel
           editionId={edition.edition_id}
+          updatedAt={edition.updated_at}
           states={{
             publication_state: edition.publication_state,
             registration_state: edition.registration_state,

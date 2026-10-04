@@ -12,8 +12,11 @@ import {
   TIMEZONE_OPTIONS,
   buildCreateEditionBody,
   buildEditionChanges,
+  changedEditionFieldLabels,
   emptyEditionValues,
+  isStaleState,
   isValidSlug,
+  rebaseEditionValues,
   sameEditionValues,
   slugify,
   validateEditionValues,
@@ -22,13 +25,24 @@ import {
 } from "@/components/admin/events/form-logic";
 import { UnsavedChangesGuard } from "@/components/admin/events/unsaved-guard";
 
-export type EventChoice = { event_id: string; name: string };
+/** One row of the Events catalogue (GET /api/v1/admin/events/list): an Event may have no Edition yet. */
+export type EventChoice = {
+  event_id: string;
+  name: string;
+  canonical_key: string;
+  status: string;
+  event_type_key: string;
+  event_type_name: string;
+  edition_count: number;
+};
 export type EventTypeChoice = { key: string; name: string };
 
 type CreateProps = {
   mode: "create";
   events: readonly EventChoice[];
   eventTypes: readonly EventTypeChoice[];
+  /** The catalogue has more Events than were loaded: the picker says so. */
+  eventsTruncated?: boolean;
 };
 
 type EditProps = {
@@ -37,8 +51,11 @@ type EditProps = {
   baseline: EditionFormValues;
   publicationState: string;
   isAdmin: boolean;
-  /** Changes whenever the saved Edition changes, so a refreshed server page remounts the form with the new baseline. */
-  resetKey: string;
+  /**
+   * `edition.updated_at` exactly as the server returned it. Sent verbatim as `expected_updated_at` on the save, so a
+   * change made by someone else meanwhile is refused (409 STALE_STATE) instead of silently overwritten (P3-L, P3-AC-15).
+   */
+  updatedAt: string;
 };
 
 const MODE_OPTIONS = [
@@ -53,7 +70,7 @@ function newIntent() {
 }
 
 export function EditionForm(props: CreateProps | EditProps) {
-  return props.mode === "create" ? <CreateForm {...props} /> : <EditForm key={props.resetKey} {...props} />;
+  return props.mode === "create" ? <CreateForm {...props} /> : <EditForm key={props.editionId} {...props} />;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -258,7 +275,7 @@ function RegistrationFields({ values, errors, set, disabled }: GroupProps) {
 // Create
 // ---------------------------------------------------------------------------------------------
 
-function CreateForm({ events, eventTypes }: CreateProps) {
+function CreateForm({ events, eventTypes, eventsTruncated }: CreateProps) {
   const router = useRouter();
   const [values, setValues] = React.useState<EditionFormValues>(emptyEditionValues);
   const [slugTouched, setSlugTouched] = React.useState(false);
@@ -277,6 +294,7 @@ function CreateForm({ events, eventTypes }: CreateProps) {
   const submitting = React.useRef(false);
 
   const creatingEvent = eventChoice === NEW_EVENT && createdEventId === null;
+  const pickedEvent = createdEventId === null ? (events.find((entry) => entry.event_id === eventChoice) ?? null) : null;
   const dirty = !sameEditionValues(values, emptyEditionValues()) || eventName !== "";
 
   const set = <K extends keyof EditionFormValues>(key: K, value: EditionFormValues[K]) => {
@@ -368,7 +386,10 @@ function CreateForm({ events, eventTypes }: CreateProps) {
             value={createdEventId ?? eventChoice}
             disabled={createdEventId !== null}
             options={[
-              ...events.map((entry) => ({ value: entry.event_id, label: entry.name })),
+              ...events.map((entry) => ({
+                value: entry.event_id,
+                label: `${entry.name} · ${entry.event_type_name} · ${entry.edition_count === 0 ? "sin ediciones" : `${entry.edition_count} ${entry.edition_count === 1 ? "edición" : "ediciones"}`}`,
+              })),
               ...(createdEventId ? [{ value: createdEventId, label: `${eventName} (recién creado)` }] : []),
               { value: NEW_EVENT, label: "Crear un evento nuevo…" },
             ]}
@@ -376,12 +397,33 @@ function CreateForm({ events, eventTypes }: CreateProps) {
               createdEventId
                 ? "El evento ya se creó. Corrige la edición y vuelve a intentar: no se creará otro evento."
                 : events.length === 0
-                  ? "Todavía no hay eventos con ediciones: crea el primero."
-                  : undefined
+                  ? "Todavía no hay eventos: crea el primero."
+                  : eventsTruncated
+                    ? "Se muestran los eventos activos más recientes; si no ves el tuyo, créalo como nuevo o búscalo desde Eventos."
+                    : "Eventos activos, incluidos los que todavía no tienen ediciones."
             }
             onChange={(event) => setEventChoice(event.target.value)}
           />
         </div>
+        {pickedEvent ? (
+          <dl className="grid gap-x-6 gap-y-1 rounded-control border border-divider bg-paper-sunken px-3 py-2 text-body-sm sm:grid-cols-3" data-testid="picked-event">
+            <div>
+              <dt className="text-caption text-ink-60">Tipo de evento</dt>
+              <dd className="font-semibold text-ink">{pickedEvent.event_type_name}</dd>
+            </div>
+            <div>
+              <dt className="text-caption text-ink-60">Clave permanente</dt>
+              <dd className="font-mono text-ink">{pickedEvent.canonical_key}</dd>
+            </div>
+            <div>
+              <dt className="text-caption text-ink-60">Estado y ediciones</dt>
+              <dd className="font-semibold text-ink">
+                {pickedEvent.status === "ACTIVE" ? "Activo" : "Archivado"} ·{" "}
+                {pickedEvent.edition_count === 0 ? "sin ediciones todavía" : `${pickedEvent.edition_count} ${pickedEvent.edition_count === 1 ? "edición" : "ediciones"}`}
+              </dd>
+            </div>
+          </dl>
+        ) : null}
         {creatingEvent ? (
           <div className="grid gap-x-4 sm:grid-cols-3" data-testid="new-event-fields">
             <SelectField
@@ -478,15 +520,29 @@ function CreateForm({ events, eventTypes }: CreateProps) {
 // Edit
 // ---------------------------------------------------------------------------------------------
 
-function EditForm({ editionId, baseline: initial, publicationState, isAdmin }: EditProps) {
+function EditForm({ editionId, baseline: serverBaseline, updatedAt, publicationState, isAdmin }: EditProps) {
   const router = useRouter();
-  const [baseline, setBaseline] = React.useState(initial);
-  const [values, setValues] = React.useState(initial);
+  const [token, setToken] = React.useState(updatedAt);
+  const [baseline, setBaseline] = React.useState(serverBaseline);
+  const [values, setValues] = React.useState(serverBaseline);
+  const [serverSeen, setServerSeen] = React.useState({ updatedAt, baseline: serverBaseline });
+  const [changedByOthers, setChangedByOthers] = React.useState<string[]>([]);
   const [errors, setErrors] = React.useState<FieldErrors>({});
   const [failure, setFailure] = React.useState<ApiFailure | null>(null);
   const [pending, setPending] = React.useState(false);
   const [saved, setSaved] = React.useState<string | null>(null);
   const submitting = React.useRef(false);
+
+  // The server page re-rendered with a different Edition (after a save, or after a stale refusal and refetch): adopt it as the new
+  // baseline and token WITHOUT dropping what the operator is typing (a field they did not touch takes the fresh value).
+  if (serverSeen.updatedAt !== updatedAt || !sameEditionValues(serverSeen.baseline, serverBaseline)) {
+    const others = changedEditionFieldLabels(baseline, serverBaseline);
+    setServerSeen({ updatedAt, baseline: serverBaseline });
+    setToken(updatedAt);
+    setBaseline(serverBaseline);
+    setValues(rebaseEditionValues(baseline, serverBaseline, values));
+    if (others.length > 0) setChangedByOthers(others);
+  }
 
   const draft = publicationState === "DRAFT";
   const dirty = !sameEditionValues(values, baseline);
@@ -511,6 +567,13 @@ function EditForm({ editionId, baseline: initial, publicationState, isAdmin }: E
     void run();
   }
 
+  /** The server refused: keep what the operator typed, show why, and when the Edition moved on, refetch it. */
+  function refused(result: ApiFailure) {
+    setFailure(result);
+    setErrors(isStaleState(result) ? {} : serverFieldErrors(result));
+    if (isStaleState(result)) router.refresh();
+  }
+
   async function run() {
     if (submitting.current) return;
     const next = validateEditionValues(values, "edit");
@@ -529,28 +592,35 @@ function EditForm({ editionId, baseline: initial, publicationState, isAdmin }: E
     setPending(true);
     setFailure(null);
     setSaved(null);
+    setChangedByOthers([]);
     try {
       let current = baseline;
+      // Every write carries the `updated_at` the form was loaded with; a write that changes the Edition hands back the new one.
+      let expected = token;
       if (changes.patch) {
-        const result = await apiFetch(`/api/v1/admin/editions/${editionId}`, { method: "PATCH", body: changes.patch });
-        if (!result.ok) {
-          setFailure(result);
-          setErrors(serverFieldErrors(result));
-          return;
-        }
+        const result = await apiFetch<{ updated_at?: unknown }>(`/api/v1/admin/editions/${editionId}`, {
+          method: "PATCH",
+          body: { ...changes.patch, expected_updated_at: expected },
+        });
+        if (!result.ok) return refused(result);
         // Only what the server confirmed becomes the new baseline.
         current = { ...current, ...pickPatched(values, changes.patch) };
         setBaseline(current);
+        if (typeof result.data.updated_at === "string") {
+          expected = result.data.updated_at;
+          setToken(expected);
+        }
       }
       if (changes.schedule) {
-        const result = await apiFetch(`/api/v1/admin/editions/${editionId}/schedule`, { method: "POST", body: changes.schedule });
-        if (!result.ok) {
-          setFailure(result);
-          setErrors(serverFieldErrors(result));
-          return;
-        }
+        const result = await apiFetch<{ edition?: { updated_at?: unknown } }>(`/api/v1/admin/editions/${editionId}/schedule`, {
+          method: "POST",
+          body: { ...changes.schedule, expected_updated_at: expected },
+        });
+        if (!result.ok) return refused(result);
         current = { ...current, local_date: values.local_date, local_start_time: values.local_start_time, local_end_time: values.local_end_time };
         setBaseline(current);
+        const fresh = result.data.edition?.updated_at;
+        if (typeof fresh === "string") setToken(fresh);
       }
       setSaved("Cambios guardados.");
       toast({ tone: "success", title: "Edición actualizada", description: changes.labels.join(", ") });
@@ -564,6 +634,11 @@ function EditForm({ editionId, baseline: initial, publicationState, isAdmin }: E
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4" aria-label="Editar edición">
       <UnsavedChangesGuard dirty={dirty && !pending} />
+      {changedByOthers.length > 0 ? (
+        <p className="rounded-control border border-info-border bg-info-tint px-3 py-2 text-body-sm text-ink" role="status" data-testid="changed-by-others">
+          Se actualizó con la versión vigente de la edición. Otra persona cambió: {changedByOthers.join(", ")}. {dirty ? "Tus cambios sin guardar se conservaron." : null}
+        </p>
+      ) : null}
       <GeneralFields values={values} errors={errors} set={set} disabled={disabled} />
       <DateFields values={values} errors={errors} set={set} disabled={disabled} />
       <RegistrationFields values={values} errors={errors} set={set} disabled={disabled} />
@@ -593,13 +668,21 @@ function EditForm({ editionId, baseline: initial, publicationState, isAdmin }: E
   );
 }
 
-/** The slice of the form the PATCH actually carried, so the baseline moves only for fields the server confirmed. */
+/**
+ * The slice of the form the PATCH actually carried, so the baseline moves only for fields the server confirmed. Text the API
+ * normalises (trim, upper-case country) is taken from the request body, so the baseline equals what the server stores.
+ */
 function pickPatched(values: EditionFormValues, patch: Record<string, unknown>): Partial<EditionFormValues> {
   const out: Partial<EditionFormValues> = {};
   const keys: (keyof EditionFormValues)[] = [
     "name", "slug", "timezone", "city", "state_region", "country_code", "registration_mode",
     "registration_open_at", "registration_close_at", "whatsapp_phone_e164", "is_benefit_event",
   ];
-  for (const key of keys) if (key in patch) (out as Record<string, unknown>)[key] = values[key];
+  const normalised = new Set<keyof EditionFormValues>(["name", "city", "state_region", "country_code"]);
+  for (const key of keys) {
+    if (!(key in patch)) continue;
+    if (normalised.has(key) && typeof patch[key] === "string") (out as Record<string, unknown>)[key] = patch[key];
+    else (out as Record<string, unknown>)[key] = values[key];
+  }
   return out;
 }

@@ -8,6 +8,7 @@ import { Panel } from "@/components/admin/panel";
 import { FormDialog } from "@/components/admin/events/form-dialog";
 import { InputField, SelectField, TextareaField } from "@/components/admin/events/fields";
 import { toTimeInput, zonedLocalToIso } from "@/components/admin/events/form-logic";
+import { readinessFix } from "@/components/admin/edition-config/config-model";
 import {
   editionTransitions,
   type EditionStates,
@@ -51,6 +52,7 @@ export function LifecyclePanel({
   timezone,
   schedule,
   isAdmin,
+  updatedAt,
 }: {
   editionId: string;
   states: EditionStates;
@@ -58,6 +60,8 @@ export function LifecyclePanel({
   timezone: string;
   schedule: LifecycleSchedule;
   isAdmin: boolean;
+  /** `edition.updated_at` exactly as read: sent as `expected_updated_at` with every transition (P3-L). */
+  updatedAt: string;
 }) {
   const [active, setActive] = React.useState<TransitionAvailability | null>(null);
   const items = React.useMemo(() => editionTransitions(states, readiness), [states, readiness]);
@@ -82,7 +86,7 @@ export function LifecyclePanel({
               <h3 className="text-label font-semibold uppercase tracking-wide text-ink-60">{GROUP_TITLE[group]}</h3>
               <ul className="flex flex-col gap-3">
                 {rows.map((item) => (
-                  <TransitionRow key={item.spec.id} item={item} isAdmin={isAdmin} onOpen={() => setActive(item)} />
+                  <TransitionRow key={item.spec.id} editionId={editionId} item={item} isAdmin={isAdmin} onOpen={() => setActive(item)} />
                 ))}
               </ul>
             </section>
@@ -112,6 +116,7 @@ export function LifecyclePanel({
           item={active}
           timezone={timezone}
           schedule={schedule}
+          updatedAt={updatedAt}
           onClose={() => setActive(null)}
         />
       ) : null}
@@ -119,7 +124,7 @@ export function LifecyclePanel({
   );
 }
 
-function TransitionRow({ item, isAdmin, onOpen }: { item: TransitionAvailability; isAdmin: boolean; onOpen: () => void }) {
+function TransitionRow({ editionId, item, isAdmin, onOpen }: { editionId: string; item: TransitionAvailability; isAdmin: boolean; onOpen: () => void }) {
   const { spec, blockedBy, enabled } = item;
   const noteId = `transition-${spec.id}-note`;
   return (
@@ -133,9 +138,22 @@ function TransitionRow({ item, isAdmin, onOpen }: { item: TransitionAvailability
               No se puede todavía. Falta resolver {blockedBy.length === 1 ? "1 requisito" : `${blockedBy.length} requisitos`}:
             </p>
             <ul className="mt-1 list-disc pl-6 text-body-sm text-ink-80">
-              {blockedBy.map((check) => (
-                <li key={check.code}>{check.label}</li>
-              ))}
+              {blockedBy.map((check) => {
+                const fix = readinessFix(editionId, check.code);
+                return (
+                  <li key={check.code}>
+                    {check.label}
+                    {fix ? (
+                      <>
+                        {" · "}
+                        <a href={fix.href} className="underline underline-offset-2">
+                          Resolver en {fix.label}
+                        </a>
+                      </>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           </div>
         ) : null}
@@ -159,12 +177,14 @@ function TransitionDialog({
   item,
   timezone,
   schedule,
+  updatedAt,
   onClose,
 }: {
   editionId: string;
   item: TransitionAvailability;
   timezone: string;
   schedule: LifecycleSchedule;
+  updatedAt: string;
   onClose: () => void;
 }) {
   const { spec } = item;
@@ -190,7 +210,8 @@ function TransitionDialog({
     setErrors(next);
     if (Object.values(next).some(Boolean)) return null;
 
-    const body: JsonObject = {};
+    // The version the operator is looking at: if the Edition changed meanwhile the server refuses with 409 STALE_STATE.
+    const body: JsonObject = { expected_updated_at: updatedAt };
     if (needsReason) body.reason = reason.trim();
     if (spec.fields === "postpone") body.registration_action = registrationAction;
     if (spec.fields === "reschedule") {

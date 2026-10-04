@@ -13,10 +13,12 @@ import { EditionSubnav } from "@/components/admin/events/edition-subnav";
 import { EventEditButton } from "@/components/admin/events/event-edit";
 import { editionToFormValues } from "@/components/admin/events/form-logic";
 import { canManageLifecycle } from "@/components/admin/events/permissions";
+import { DefinitionList, Panel } from "@/components/admin/panel";
 import { PublicationBadge } from "@/components/admin/status-badges";
 import { PanelsSkeleton } from "@/components/admin/skeletons";
 import { buttonVariants } from "@/components/ui/button";
-import { adminGetEditionEditor, adminListEditions } from "@/lib/server/domain/events/service";
+import { getActiveEventTypes } from "@/lib/server/domain/discovery/service";
+import { adminGetEditionEditor, adminGetEvent } from "@/lib/server/domain/events/service";
 import { requireStaff, settle } from "@/app/admin/_lib/session";
 
 export const metadata: Metadata = { title: "Datos y fechas" };
@@ -73,9 +75,13 @@ async function Configuration({ supabase, assignments, editionId }: { supabase: S
 
   const { edition } = result.data;
   const isAdmin = canManageLifecycle(assignments, editionId);
-  // The Event's own name is not in the editor projection: it is read from the Editions list (same Event).
-  const siblings = await settle(adminListEditions(supabase, { event_id: edition.event_id, limit: 1 }), "events.configuration.event");
-  const eventName = siblings.ok ? (siblings.data.items[0]?.event_name ?? null) : null;
+  // The Event read (P3-L): its name, permanent key, type and status. A failed read only hides that panel; the Edition form stays usable.
+  const [eventRead, types] = await Promise.all([
+    settle(adminGetEvent(supabase, edition.event_id), "events.configuration.event"),
+    isAdmin ? settle(getActiveEventTypes(), "events.configuration.types") : Promise.resolve(null),
+  ]);
+  const event = eventRead.ok ? eventRead.data : null;
+  const eventTypes = types && types.ok ? types.data.map((type) => ({ key: type.key, name: type.name })) : [];
 
   return (
     <AdminPage assignments={assignments} title={`Datos y fechas · ${edition.name}`} actions={<BackToEdition editionId={editionId} />}>
@@ -84,13 +90,21 @@ async function Configuration({ supabase, assignments, editionId }: { supabase: S
           <EditionSubnav editionId={editionId} current="configuracion" />
           <div className="flex flex-wrap items-center gap-2">
             <PublicationBadge value={edition.publication_state} />
-            {isAdmin && eventName ? <EventEditButton eventId={edition.event_id} name={eventName} /> : null}
+            {isAdmin && event ? <EventEditButton eventId={event.event_id} name={event.name} eventTypeKey={event.event_type_key} eventTypes={eventTypes} /> : null}
           </div>
         </div>
-        {eventName ? (
-          <p className="text-body-sm text-ink-60">
-            Evento: <strong className="text-ink">{eventName}</strong>
-          </p>
+        {event ? (
+          <Panel title="Evento" description="Una edición pertenece a un evento; su clave permanente no cambia.">
+            <DefinitionList
+              items={[
+                { label: "Nombre", value: event.name },
+                { label: "Tipo de evento", value: event.event_type_name },
+                { label: "Clave permanente", value: <span className="font-mono text-caption">{event.canonical_key}</span> },
+                { label: "Estado", value: event.status === "ACTIVE" ? "Activo" : "Archivado" },
+                { label: "Ediciones del evento", value: String(event.edition_count) },
+              ]}
+            />
+          </Panel>
         ) : null}
         <EditionForm
           mode="edit"
@@ -98,7 +112,7 @@ async function Configuration({ supabase, assignments, editionId }: { supabase: S
           baseline={editionToFormValues(edition)}
           publicationState={edition.publication_state}
           isAdmin={isAdmin}
-          resetKey={`${edition.updated_at}|${edition.schedule?.edition_schedule_revision_id ?? "none"}`}
+          updatedAt={edition.updated_at}
         />
       </div>
     </AdminPage>

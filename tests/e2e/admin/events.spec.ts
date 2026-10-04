@@ -144,11 +144,12 @@ test.describe("an invalid publish is blocked", () => {
 
     const blocked = page.getByTestId("blocked-publish");
     await expect(blocked).toContainText("No se puede todavía. Falta resolver 2 requisitos");
-    await expect(blocked.getByRole("listitem")).toHaveText(["Al menos una modalidad", "Descripción mínima"]);
+    // each missing item now also points at the screen that resolves it (P3-E2)
+    await expect(blocked.getByRole("listitem")).toHaveText([/^Al menos una modalidad · Resolver en Modalidades y precios$/, /^Descripción mínima · Resolver en Contenido$/]);
     const publish = page.getByRole("button", { name: "Publicar edición" });
     await expect(publish).toBeDisabled();
     // the server's own checklist agrees with what the action panel lists
-    await expect(page.getByText("Pendiente: Al menos una modalidad", { exact: true })).toBeAttached();
+    await expect(page.getByText("Pendiente: Al menos una modalidad").first()).toBeAttached();
     await shot("blocked-publish");
 
     // the unavailable actions are explained, not offered
@@ -251,7 +252,8 @@ test.describe("state transitions", () => {
     await expect(states).toContainText("Programada");
     await expect(page.getByText("07:00").first()).toBeVisible();
 
-    // stale screen: another operator hides the edition while this tab still offers "Ocultar"
+    // stale screen: another operator hides the edition while this tab still offers "Ocultar". The tab sends the `updated_at` it
+    // loaded (P3-L), so the server answers STALE_STATE (the Edition moved on) instead of waiting to hit an invalid transition.
     const hide = await postTransition(page, fixture.editionId, "hide", { reason: "Ocultada por otra persona" });
     expect(hide.status).toBe(200);
     await page.locator('[data-transition="hide"]').getByRole("button", { name: "Ocultar edición" }).click();
@@ -259,7 +261,8 @@ test.describe("state transitions", () => {
     await hideDialog.getByLabel("Motivo").fill("Segundo intento");
     await hideDialog.getByRole("button", { name: "Ocultar edición" }).click();
     const refusal = hideDialog.getByTestId("refusal-notice");
-    await expect(refusal).toContainText("La acción ya no aplica");
+    await expect(refusal).toContainText("La edición cambió mientras la editabas");
+    await expect(refusal).not.toContainText("STALE_STATE");
     await expect(refusal.getByRole("button", { name: "Actualizar datos" })).toBeVisible();
     await shot("stale-transition-refused");
     await hideDialog.getByRole("button", { name: "Cancelar" }).click();
@@ -371,7 +374,7 @@ test.describe("roles", () => {
     await gotoAndSettle(page, `/admin/eventos/${fixture.editionId}/configuracion`);
     await expect(page.getByLabel("Modo de inscripción")).toBeDisabled();
     await expect(page.getByLabel("Cierre de inscripciones")).toBeDisabled();
-    await expect(page.getByRole("button", { name: "Renombrar evento" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Editar evento" })).toHaveCount(0);
     await page.getByLabel("Ciudad").fill("Guadalupe");
     await page.getByRole("button", { name: "Guardar cambios" }).click();
     await expect(page.getByText("Cambios guardados.")).toBeVisible();

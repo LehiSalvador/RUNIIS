@@ -108,6 +108,7 @@ describe("lifecycle panel", () => {
         timezone="America/Monterrey"
         schedule={null}
         isAdmin={isAdmin}
+        updatedAt="2026-10-03T12:00:00.123456+00:00"
       />,
     );
 
@@ -123,6 +124,13 @@ describe("lifecycle panel", () => {
     const html = render(true, ready);
     expect(html).not.toContain('data-testid="blocked-publish"');
     expect(html).toMatch(/<button(?![^>]*[ ]disabled="")[^>]*>Publicar edición<[/]button>/);
+  });
+
+  test("every missing publication requirement points at the screen that resolves it", () => {
+    const html = render(true);
+    expect(html).toContain('href="/admin/eventos/5a000000-0000-4000-8000-00000000000a/modalidades"');
+    expect(html).toContain('href="/admin/eventos/5a000000-0000-4000-8000-00000000000a/contenido"');
+    expect(html).toContain("Resolver en Contenido");
   });
 
   test("an operator sees what is missing but every action is disabled and says why", () => {
