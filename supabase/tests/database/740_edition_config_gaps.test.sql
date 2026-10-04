@@ -124,9 +124,9 @@ select is(public.admin_list_schedule_revisions('50000000-0000-4000-8000-00000074
 select is(public.admin_list_schedule_revisions('50000000-0000-4000-8000-000000740001') -> 'items' -> 0 ->> 'created_by_staff_id', '20000000-0000-4000-8000-000000740012',
   'the actor is the opaque staff id');
 select is((select array_agg(k order by k) from jsonb_object_keys(public.admin_list_schedule_revisions('50000000-0000-4000-8000-000000740001') -> 'items' -> 0) k),
-  array['created_at', 'created_by_staff_id', 'edition_schedule_revision_id', 'effective_end_at', 'effective_start_at', 'is_current', 'local_date',
+  array['created_at', 'created_by_staff_id', 'created_by_staff_label', 'edition_schedule_revision_id', 'effective_end_at', 'effective_start_at', 'is_current', 'local_date',
         'local_end_time', 'local_start_time', 'reason', 'revision', 'schedule_state', 'superseded_at', 'timezone'],
-  'exactly these fields: no email, name or auth id of the actor');
+  'exactly these fields: the opaque id and a staff-safe label (P3-O), never an email or auth id of the actor');
 select is(jsonb_array_length(public.admin_list_schedule_revisions('50000000-0000-4000-8000-000000740001', null, 2) -> 'items'), 2, 'limit 2 returns 2');
 select is(public.admin_list_schedule_revisions('50000000-0000-4000-8000-000000740001', null, 2) -> 'next_cursor' ->> 'revision', '2', '... with a cursor on the last revision shown');
 select is(public.admin_list_schedule_revisions('50000000-0000-4000-8000-000000740001', 2, 2) -> 'items' -> 0 ->> 'revision', '1', 'the cursor continues with the older revision');

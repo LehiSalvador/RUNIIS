@@ -70,6 +70,7 @@ describe("schedule revision history schemas", () => {
     superseded_at: null,
     is_current: true,
     created_by_staff_id: guid,
+    created_by_staff_label: "Ana G.",
   };
 
   test("a page parses; an unknown key fails closed (nothing else about the actor leaks)", () => {

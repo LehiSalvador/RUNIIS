@@ -739,8 +739,10 @@ export const scheduleRevisionHistoryItemSchema = z.strictObject({
   created_at: timestamp,
   superseded_at: timestamp.nullable(),
   is_current: z.boolean(),
-  // Opaque staff_member_id: staff carry no display name in the schema (identity is auth.users) and nothing else about the actor is exposed.
+  // Opaque staff_member_id plus a staff-safe label (P3-O, private.staff_display_label): "First L." for ADMIN/OPERATOR viewers who have a profile
+  // name, otherwise "Staff #abc123". Never an email, an auth id or the full name.
   created_by_staff_id: id,
+  created_by_staff_label: z.string(),
 });
 
 export const scheduleRevisionHistorySchema = z.strictObject({
@@ -798,6 +800,28 @@ export const createMediaAssetBodySchema = z.strictObject({
   focal_point: z.strictObject({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).nullable().optional(),
 });
 
+// ---- Media asset lifecycle (P3-O, Master 52) ----
+
+// A metadata PATCH names only what changes (focal_point: null clears it). expected_updated_at is the asset's updated_at as last read: a stale one is 409
+// STALE_STATE. status is not editable here (publish / archive are their own commands) and the storage key can only change while the asset is PENDING.
+export const updateMediaAssetBodySchema = z
+  .strictObject({
+    expected_updated_at: z.iso.datetime({ offset: true }),
+    alt_text: z.string().trim().min(1).max(300).optional(),
+    sort_order: z.int().min(0).max(10000).optional(),
+    focal_point: z.strictObject({ x: z.number().min(0).max(1), y: z.number().min(0).max(1) }).nullable().optional(),
+    storage_object_key: z
+      .string()
+      .trim()
+      .min(1)
+      .max(255)
+      .refine(isPublicMediaKey, { message: "Not a plain storage object key (no scheme, host or .. segment)" })
+      .optional(),
+  })
+  .refine((body) => Object.keys(body).length > 1, { message: "At least one field to change is required" });
+
+export const mediaAssetTransitionBodySchema = z.strictObject({ expected_updated_at: z.iso.datetime({ offset: true }) });
+
 // ---- Anti-hoarding policy (P3-D RPCs, P3-L HTTP surface) ----
 
 export const antiHoardingPolicySchema = z.strictObject({
@@ -831,6 +855,7 @@ export const formIdParamSchema = z.strictObject({ formId: id });
 export const locationIdParamSchema = z.strictObject({ locationId: id });
 export const agendaItemIdParamSchema = z.strictObject({ itemId: id });
 export const contentBlockIdParamSchema = z.strictObject({ blockId: id });
+export const mediaAssetIdParamSchema = z.strictObject({ assetId: id });
 export const kitDefinitionIdParamSchema = z.strictObject({ kitDefinitionId: id });
 export const kitVariantIdParamSchema = z.strictObject({ kitVariantId: id });
 export const legalDocumentIdParamSchema = z.strictObject({ documentId: id });

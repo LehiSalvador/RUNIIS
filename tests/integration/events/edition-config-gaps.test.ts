@@ -132,7 +132,7 @@ describe("edition configuration API gaps (P3-M) integration", () => {
     expect(items.find((r) => r.reason === "Ajuste de hora")).toMatchObject({ local_start_time: "07:30:00", is_current: false });
     expect(items[0].created_by_staff_id).toMatch(/^[0-9a-f-]{36}$/);
     expect(Object.keys(items[0]).sort()).toEqual(
-      ["created_at", "created_by_staff_id", "edition_schedule_revision_id", "effective_end_at", "effective_start_at", "is_current", "local_date", "local_end_time",
+      ["created_at", "created_by_staff_id", "created_by_staff_label", "edition_schedule_revision_id", "effective_end_at", "effective_start_at", "is_current", "local_date", "local_end_time",
         "local_start_time", "reason", "revision", "schedule_state", "superseded_at", "timezone"].sort(),
     );
 

@@ -55,6 +55,9 @@ export const taskSchema = z.strictObject({
   status: z.enum(TASK_STATUSES),
   assigned_role: z.enum(TASK_ASSIGNED_ROLES).nullable(),
   assigned_staff_id: id.nullable(),
+  // Staff-safe label for the assignee (P3-O): "First L." for ADMIN/OPERATOR viewers, "Staff #abc123" otherwise, null while unassigned. Optional so
+  // older fixtures keep parsing; the database always sends it.
+  assigned_staff_label: z.string().nullable().optional(),
   detected_at: timestamp,
   due_at: timestamp.nullable(),
   started_at: timestamp.nullable(),

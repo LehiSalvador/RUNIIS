@@ -281,6 +281,27 @@ export async function createMediaAsset(supabase: SupabaseClient, editionId: stri
   return result;
 }
 
+// P3-O lifecycle. Each command carries expected_updated_at in the body (stale = 409 STALE_STATE) and a required Idempotency-Key; the database
+// authorises on the asset's Edition, validates, audits and (for archive) refuses with reason "in_use" while a PUBLISHED content block uses the asset.
+export type MediaAssetCommand = "update" | "publish" | "archive";
+
+export async function runMediaAssetCommand(
+  supabase: SupabaseClient,
+  command: MediaAssetCommand,
+  assetId: string,
+  body: JsonObject,
+  idempotencyKey: string,
+) {
+  const result = await callRpc(
+    supabase,
+    `${command}_media_asset`,
+    { p_asset_id: assetId, p_input: body, p_idempotency_key: idempotencyKey },
+    mediaAssetSchema,
+  );
+  logEvent("info", `event_media_asset_${command}`, { edition_id: result.edition_id, event_media_asset_id: result.event_media_asset_id });
+  return result;
+}
+
 // ---- Edition transitions ----
 
 const TRANSITION_COMMAND: Record<string, string> = {
