@@ -75,6 +75,46 @@ export function withLegalVersionIds<T extends object>(fields: T): T & { legal_do
   return { ...fields, legal_document_version_ids: currentAccountLegalVersionIds() };
 }
 
+/** Prefix of every legal document key an integration test publishes (create_legal_document needs a caller-chosen key for the non-EVENT_RULES types). */
+export const TEST_LEGAL_DOCUMENT_PREFIX = "IT_TEST_DOC_";
+
+/** A fresh, unique `IT_TEST_DOC_*` key: the only keys `purgeTestLegalDocuments` removes. */
+export function testLegalDocumentKey(label = ""): string {
+  return `${TEST_LEGAL_DOCUMENT_PREFIX}${label ? `${label.replaceAll(/[^A-Za-z0-9]/g, "").toUpperCase().slice(0, 12)}_` : ""}${randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`;
+}
+
+/** How many `IT_TEST_DOC_*` documents the shared local database currently holds (0 after a clean integration run). */
+export function testLegalDocumentCount(): number {
+  return Number(queryValue(`select count(*)::int from app.legal_document where document_key like '${TEST_LEGAL_DOCUMENT_PREFIX}%'`) ?? "0");
+}
+
+/**
+ * Test hygiene (P3-AC-19). A PUBLISHED TERMS/PRIVACY/WAIVER/MINOR_TERMS document is GLOBAL: every account and every registration sees it, so one a
+ * test leaves behind breaks the journeys of whoever runs next on the shared local database. Published versions and acceptances are append-only by
+ * design (never removable through the API), so the test-owned rows (and only `IT_TEST_DOC_*`) are removed here as the table owner, in one
+ * transaction with the guards switched off only for that transaction. Idempotent and cheap when there is nothing to remove (one read, no DDL).
+ */
+export function purgeTestLegalDocuments(): void {
+  if (testLegalDocumentCount() === 0) return;
+  const owned = `select legal_document_id from app.legal_document where document_key like '${TEST_LEGAL_DOCUMENT_PREFIX}%'`;
+  const versions = `select legal_document_version_id from app.legal_document_version where legal_document_id in (${owned})`;
+  sql(`
+    begin;
+    set local lock_timeout = '20s';
+    alter table app.legal_acceptance disable trigger append_only;
+    alter table app.communication_consent disable trigger append_only;
+    alter table app.legal_document_version disable trigger protect_versioned_status;
+    delete from app.legal_acceptance where legal_document_version_id in (${versions});
+    delete from app.communication_consent where legal_document_version_id in (${versions});
+    delete from app.legal_document_version where legal_document_id in (${owned});
+    delete from app.legal_document where document_key like '${TEST_LEGAL_DOCUMENT_PREFIX}%';
+    alter table app.legal_document_version enable trigger protect_versioned_status;
+    alter table app.communication_consent enable trigger append_only;
+    alter table app.legal_acceptance enable trigger append_only;
+    commit;
+  `);
+}
+
 /** Secret-key client for fixture setup/teardown and admin-only reads (local target only). */
 export function systemClient(): SupabaseClient {
   return localSystemClient();

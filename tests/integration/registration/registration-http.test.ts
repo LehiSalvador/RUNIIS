@@ -1,6 +1,6 @@
-import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { createLegalDocumentVersion, publishLegalDocumentVersion, updateEdition } from "@/lib/server/domain/events/service";
-import { cleanup, createCookieJar, createTestStaff, httpSignIn, queryValue, sql, withLegalVersionIds, type TestStaff } from "../helpers";
+import { afterAll, beforeAll, describe, expect, onTestFinished, test } from "vitest";
+import { createLegalDocument, createLegalDocumentVersion, publishLegalDocumentVersion, updateEdition } from "@/lib/server/domain/events/service";
+import { cleanup, createCookieJar, createTestStaff, httpSignIn, purgeTestLegalDocuments, queryValue, sql, testLegalDocumentKey, withLegalVersionIds, type TestStaff } from "../helpers";
 import { buildEdition, ensureGlobalLegalDocumentsPublished } from "./helpers";
 
 // P2-B over the real HTTP routes of the shared dev server (real HttpOnly session cookies, real Mailpit OTP):
@@ -45,6 +45,14 @@ describe("registration over HTTP (P2-B) integration", () => {
   });
 
   test("onboarding legal -> context -> FREE registration -> pass, then a new TERMS version forces re-acceptance", async () => {
+    // P3-AC-19: the re-acceptance rule runs on a test-owned account-level document (TERMS type, IT_TEST_DOC_ key) published before onboarding, so the
+    // displayed ids include it, and given a second version later. Publishing a new version of the platform's own TERMS_OF_SERVICE would be permanent
+    // (published versions are append-only) and force every account on the shared local database to re-accept. Removed when the test ends, pass or fail.
+    onTestFinished(() => purgeTestLegalDocuments());
+    const termsDocument = await createLegalDocument(admin.client, { document_type: "TERMS_OF_SERVICE", document_key: testLegalDocumentKey("HTTPREG") });
+    const termsV1 = await createLegalDocumentVersion(admin.client, termsDocument.legal_document_id, { content_markdown: "[TEST] TERMS http v1" });
+    await publishLegalDocumentVersion(admin.client, termsV1.legal_document_version_id, null);
+
     const edition = await buildEdition(admin.client, { mode: "FREE" });
     const slug = queryValue(`select slug from app.edition where edition_id = '${edition.editionId}'`)!;
     const jar = createCookieJar();
@@ -112,8 +120,8 @@ describe("registration over HTTP (P2-B) integration", () => {
     expect(after.candidates[0].modalities[0]).toMatchObject({ eligible: false, code: "DUPLICATE_REGISTRATION" });
 
     // A newly published TERMS version: the profile reports it and creation is refused until re-accepted.
-    const termsId = queryValue(`select legal_document_id::text from app.legal_document where document_key = 'TERMS_OF_SERVICE'`)!;
-    const draft = await createLegalDocumentVersion(admin.client, termsId, { content_markdown: "[TEST] TERMS http nueva versión" });
+    const termsId = termsDocument.legal_document_id;
+    const draft = await createLegalDocumentVersion(admin.client, termsId, { content_markdown: "[TEST] TERMS http v2" });
     await publishLegalDocumentVersion(admin.client, draft.legal_document_version_id, null);
     const status = await send(jar, "GET", "/api/v1/me/legal");
     expect(status.body.data).toMatchObject({ needs_acceptance: true, needs_reacceptance: true });

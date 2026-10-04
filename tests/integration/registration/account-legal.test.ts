@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { AppError } from "@/lib/server/http/errors";
 import { acceptAccountLegalDocuments, completeOnboarding, ensureRunnerProfile, getMyLegalStatus } from "@/lib/server/domain/auth/service";
-import { createLegalDocumentVersion, publishLegalDocumentVersion } from "@/lib/server/domain/events/service";
+import { createLegalDocument, createLegalDocumentVersion, publishLegalDocumentVersion } from "@/lib/server/domain/events/service";
 import { createRegistrationRequest } from "@/lib/server/domain/registration/service";
-import { cleanup, createTestStaff, createTestUser, currentAccountLegalVersionIds, queryValue, type TestStaff, type TestUser } from "../helpers";
+import { cleanup, createTestStaff, createTestUser, currentAccountLegalVersionIds, purgeTestLegalDocuments, queryValue, testLegalDocumentKey, type TestStaff, type TestUser } from "../helpers";
 import { buildEdition, ensureGlobalLegalDocumentsPublished, selfAcceptance } from "./helpers";
 
 // OWN-05 (owner decision 2026-10-03): TERMS_OF_SERVICE + PRIVACY_NOTICE are accepted in onboarding and
@@ -201,21 +201,64 @@ describe("account-level legal acceptance (OWN-05) integration", () => {
     authUserIds.push(user.authUserId);
     expect((await getMyLegalStatus(user.client)).needs_acceptance).toBe(false);
 
-    const draft = await createLegalDocumentVersion(admin.client, documentId("TERMS_OF_SERVICE"), { content_markdown: "[TEST] TERMS_OF_SERVICE nueva versión" });
-    await publishLegalDocumentVersion(admin.client, draft.legal_document_version_id, null);
+    // P3-AC-19: the re-acceptance rule is exercised on a test-owned account-level document (TERMS type, IT_TEST_DOC_ key), not on the platform's own
+    // TERMS_OF_SERVICE: publishing a new version of that one is permanent (published versions and acceptances are append-only) and would force every
+    // account on the shared local database to re-accept. The test document is removed in `finally`.
+    const key = testLegalDocumentKey("REACCEPT");
+    try {
+      const document = await createLegalDocument(admin.client, { document_type: "TERMS_OF_SERVICE", document_key: key });
+      const first = await createLegalDocumentVersion(admin.client, document.legal_document_id, { content_markdown: "[TEST] TERMS v1" });
+      await publishLegalDocumentVersion(admin.client, first.legal_document_version_id, null);
+      expect((await getMyLegalStatus(user.client)).documents.find((d) => d.document_key === key)!.status).toBe("NEVER_ACCEPTED");
+      await acceptAccountLegalDocuments(user.client, [first.legal_document_version_id]);
+      expect((await getMyLegalStatus(user.client)).needs_acceptance).toBe(false);
 
-    const status = await getMyLegalStatus(user.client);
-    expect(status.needs_reacceptance).toBe(true);
-    expect(status.needs_acceptance).toBe(true);
-    const terms = status.documents.find((d) => d.document_key === "TERMS_OF_SERVICE")!;
-    expect(terms.status).toBe("NEW_VERSION");
-    expect(terms.legal_document_version_id).toBe(draft.legal_document_version_id);
-    expect(terms.accepted_version).toBeLessThan(terms.version);
-    expect(status.documents.find((d) => d.document_key === "PRIVACY_NOTICE")!.status).toBe("ACCEPTED");
-    expect(status.missing_document_version_ids).toEqual([draft.legal_document_version_id]);
+      const draft = await createLegalDocumentVersion(admin.client, document.legal_document_id, { content_markdown: "[TEST] TERMS nueva versión" });
+      await publishLegalDocumentVersion(admin.client, draft.legal_document_version_id, null);
 
-    const blocked = await appError(
-      createRegistrationRequest(
+      const status = await getMyLegalStatus(user.client);
+      expect(status.needs_reacceptance).toBe(true);
+      expect(status.needs_acceptance).toBe(true);
+      const terms = status.documents.find((d) => d.document_key === key)!;
+      expect(terms.status).toBe("NEW_VERSION");
+      expect(terms.legal_document_version_id).toBe(draft.legal_document_version_id);
+      expect(terms.accepted_version).toBeLessThan(terms.version);
+      expect(status.documents.find((d) => d.document_key === "PRIVACY_NOTICE")!.status).toBe("ACCEPTED");
+      expect(status.missing_document_version_ids).toEqual([draft.legal_document_version_id]);
+
+      const blocked = await appError(
+        createRegistrationRequest(
+          user.client,
+          {
+            edition_id: edition.editionId,
+            participants: [{ kind: "PROFILE", public_profile_id: user.publicProfileId!, modality_id: edition.modalityId }],
+            legal_acceptances: [selfAcceptance(0, edition.sportWaiverVersionId)],
+          },
+          null,
+        ),
+      );
+      expect(blocked.code).toBe("LEGAL_ACCEPTANCE_REQUIRED");
+      expect(blocked.details.needs_reacceptance).toBe(true);
+
+      // The previous version can no longer be accepted; only the current one.
+      const supersededId = queryValue(
+        `select legal_document_version_id::text from app.legal_document_version where legal_document_id = '${documentId(key)}' and status = 'SUPERSEDED' order by version desc limit 1`,
+      )!;
+      expect(supersededId).toBe(first.legal_document_version_id);
+      const stale = await appError(acceptAccountLegalDocuments(user.client, [supersededId]));
+      expect(stale.code).toBe("LEGAL_ACCEPTANCE_REQUIRED");
+      expect(stale.details.reason).toBe("VERSION_NOT_CURRENT");
+
+      const after = await acceptAccountLegalDocuments(user.client, [draft.legal_document_version_id]);
+      expect(after.needs_reacceptance).toBe(false);
+      expect(after.needs_acceptance).toBe(false);
+      // Naturally idempotent: accepting again changes nothing and inserts no duplicate row.
+      await acceptAccountLegalDocuments(user.client, [draft.legal_document_version_id]);
+      expect(
+        queryValue(`select count(*)::int from app.legal_acceptance where runner_profile_id = '${user.runnerProfileId}' and legal_document_version_id = '${draft.legal_document_version_id}'`),
+      ).toBe("1");
+
+      const view = await createRegistrationRequest(
         user.client,
         {
           edition_id: edition.editionId,
@@ -223,38 +266,13 @@ describe("account-level legal acceptance (OWN-05) integration", () => {
           legal_acceptances: [selfAcceptance(0, edition.sportWaiverVersionId)],
         },
         null,
-      ),
-    );
-    expect(blocked.code).toBe("LEGAL_ACCEPTANCE_REQUIRED");
-    expect(blocked.details.needs_reacceptance).toBe(true);
-
-    // The previous version can no longer be accepted; only the current one.
-    const supersededId = queryValue(
-      `select legal_document_version_id::text from app.legal_document_version where legal_document_id = '${documentId("TERMS_OF_SERVICE")}' and status = 'SUPERSEDED' order by version desc limit 1`,
-    )!;
-    const stale = await appError(acceptAccountLegalDocuments(user.client, [supersededId]));
-    expect(stale.code).toBe("LEGAL_ACCEPTANCE_REQUIRED");
-    expect(stale.details.reason).toBe("VERSION_NOT_CURRENT");
-
-    const after = await acceptAccountLegalDocuments(user.client, [draft.legal_document_version_id]);
-    expect(after.needs_reacceptance).toBe(false);
-    expect(after.needs_acceptance).toBe(false);
-    // Naturally idempotent: accepting again changes nothing and inserts no duplicate row.
-    await acceptAccountLegalDocuments(user.client, [draft.legal_document_version_id]);
-    expect(
-      queryValue(`select count(*)::int from app.legal_acceptance where runner_profile_id = '${user.runnerProfileId}' and legal_document_version_id = '${draft.legal_document_version_id}'`),
-    ).toBe("1");
-
-    const view = await createRegistrationRequest(
-      user.client,
-      {
-        edition_id: edition.editionId,
-        participants: [{ kind: "PROFILE", public_profile_id: user.publicProfileId!, modality_id: edition.modalityId }],
-        legal_acceptances: [selfAcceptance(0, edition.sportWaiverVersionId)],
-      },
-      null,
-    );
-    expect(view.status).toBe("CONFIRMED");
+      );
+      expect(view.status).toBe("CONFIRMED");
+    } finally {
+      purgeTestLegalDocuments();
+    }
+    expect(queryValue(`select count(*)::int from app.legal_document where document_key = '${key}'`)).toBe("0");
+    expect((await getMyLegalStatus(user.client)).needs_acceptance).toBe(false);
   }, 60_000);
 
   test("another account's acceptance never satisfies mine (acceptance is per actor)", async () => {

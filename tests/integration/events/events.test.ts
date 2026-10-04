@@ -16,7 +16,7 @@ import {
   updatePlatformSettings,
 } from "@/lib/server/domain/events/service";
 import { AppError } from "@/lib/server/http/errors";
-import { cleanup, createTestStaff, queryValue, type TestStaff } from "../helpers";
+import { cleanup, createTestStaff, purgeTestLegalDocuments, queryValue, testLegalDocumentKey, type TestStaff } from "../helpers";
 import { localAnonClient } from "../supabase";
 
 // Exercises the events/editions admin stack end to end: real local Postgres, real RLS
@@ -102,19 +102,26 @@ describe("events/editions admin domain (T30) integration", () => {
   });
 
   test("legal document create -> version -> publish -> public GET returns it; an unknown key is null (404)", async () => {
-    const key = `IT_TEST_DOC_${randomUUID().replaceAll("-", "").slice(0, 12).toUpperCase()}`;
-    const doc = await createLegalDocument(admin.client, { document_type: "TERMS_OF_SERVICE", document_key: key });
-    const version = await createLegalDocumentVersion(admin.client, doc.legal_document_id, {
-      content_markdown: "[DOCUMENTO DE PRUEBA LOCAL — no es texto legal] integración",
-    });
-    expect(version.status).toBe("DRAFT");
-    await publishLegalDocumentVersion(admin.client, version.legal_document_version_id, null);
+    // A PUBLISHED TERMS document is global (every account must accept it), so this one lives only for the duration of the test (P3-AC-19).
+    const key = testLegalDocumentKey();
+    try {
+      const doc = await createLegalDocument(admin.client, { document_type: "TERMS_OF_SERVICE", document_key: key });
+      const version = await createLegalDocumentVersion(admin.client, doc.legal_document_id, {
+        content_markdown: "[DOCUMENTO DE PRUEBA LOCAL — no es texto legal] integración",
+      });
+      expect(version.status).toBe("DRAFT");
+      await publishLegalDocumentVersion(admin.client, version.legal_document_version_id, null);
 
-    const publicDoc = await getPublicLegalDocument(localAnonClient(), key);
-    expect(publicDoc?.content_markdown).toBe("[DOCUMENTO DE PRUEBA LOCAL — no es texto legal] integración");
+      const publicDoc = await getPublicLegalDocument(localAnonClient(), key);
+      expect(publicDoc?.content_markdown).toBe("[DOCUMENTO DE PRUEBA LOCAL — no es texto legal] integración");
 
-    const missing = await getPublicLegalDocument(localAnonClient(), `${key}_UNKNOWN`);
-    expect(missing).toBeNull();
+      const missing = await getPublicLegalDocument(localAnonClient(), `${key}_UNKNOWN`);
+      expect(missing).toBeNull();
+    } finally {
+      purgeTestLegalDocuments();
+    }
+    expect(queryValue(`select count(*)::int from app.legal_document where document_key = '${key}'`)).toBe("0");
+    expect(await getPublicLegalDocument(localAnonClient(), key)).toBeNull();
   });
 
   test("admin_get_edition_editor returns the full projection for a GLOBAL ADMIN", async () => {
