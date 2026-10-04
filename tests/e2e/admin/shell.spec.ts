@@ -229,8 +229,8 @@ test.describe("edition overview", () => {
     // no quick links to sections that do not exist yet: every link in main goes to a built route
     const hrefs = await page.locator("main a[href]").evaluateAll((a) => a.map((x) => x.getAttribute("href") ?? ""));
     for (const href of hrefs) {
-      // built routes only: the list, the dashboard, the public site, the scanner (P3-H) and this Edition's own sections (P3-E2 added forms, locations, agenda and content; P3-H the kit centre and the guardian desk)
-      const own = /^[/]admin[/]eventos[/][0-9a-f-]{36}([/](configuracion|modalidades|formularios|ubicaciones|agenda|contenido|kits|tutores))?$/.test(href);
+      // built routes only: the list, the dashboard, the public site, the scanner (P3-H) and this Edition's own sections (P3-E2 added forms, locations, agenda and content; P3-F the route editor, P3-G the request queue and the participants, P3-H the kit centre and the guardian desk)
+      const own = /^[/]admin[/]eventos[/][0-9a-f-]{36}([/](configuracion|modalidades|formularios|ubicaciones|agenda|contenido|rutas|solicitudes|participantes|kits|tutores))?$/.test(href);
       expect(["/admin/eventos", "/admin", "/cuenta", "/", "/scanner"].includes(href) || href.startsWith("/eventos/") || own, href).toBe(true);
     }
     await expect(page.getByRole("link", { name: "Ver en el sitio" })).toHaveAttribute("href", /\/eventos\/[a-z0-9-]+$/);

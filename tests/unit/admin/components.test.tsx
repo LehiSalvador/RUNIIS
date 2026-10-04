@@ -156,16 +156,16 @@ describe("dashboard metrics", () => {
 });
 
 describe("edition quick links", () => {
-  test("only built routes the role can open are linked: the P3-E1/P3-E2 configuration sections, the P3-F routes and the P3-H race day surfaces are built, the rest are not yet", () => {
-    const BUILT = ["configuracion", "modalidades", "formularios", "ubicaciones", "agenda", "contenido", "ruta", "kits", "tutores", "escaner"];
+  test("only built routes the role can open are linked: the P3-E1/P3-E2 configuration sections, the P3-F routes, the P3-G request queue and participants and the P3-H race day surfaces are built, the rest are not yet", () => {
+    const BUILT = ["configuracion", "modalidades", "formularios", "ubicaciones", "agenda", "contenido", "ruta", "solicitudes", "participantes", "kits", "tutores", "escaner"];
     expect(editionQuickLinks(EDITION, operator).map((link) => link.key)).toEqual(BUILT);
     for (const candidate of EDITION_LINK_CANDIDATES) expect(isRouteAvailable(candidate.route), candidate.route).toBe(BUILT.includes(candidate.key));
   });
 
   test("a section appears the moment its route is listed, and only for roles that may open it", () => {
-    const built = (route: string) => ["/admin/solicitudes", "/admin/cierre"].includes(route);
+    const built = (route: string) => ["/admin/eventos/[editionId]/solicitudes", "/admin/cierre"].includes(route);
     expect(editionQuickLinks(EDITION, operator, built).map((link) => link.key)).toEqual(["solicitudes"]);
-    expect(editionQuickLinks(EDITION, operator, built)[0].href).toBe(`/admin/solicitudes?edition_id=${EDITION}`);
+    expect(editionQuickLinks(EDITION, operator, built)[0].href).toBe(`/admin/eventos/${EDITION}/solicitudes`);
     expect(editionQuickLinks(EDITION, checkin, built)).toEqual([]);
     const admin: StaffAssignment[] = [{ role: "ADMIN", scope_type: "GLOBAL", edition_id: null }];
     expect(editionQuickLinks(EDITION, admin, built).map((link) => link.key)).toEqual(["solicitudes", "cierre"]);
