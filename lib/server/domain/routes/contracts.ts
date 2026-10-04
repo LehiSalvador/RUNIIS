@@ -83,6 +83,8 @@ export const routeRevisionSchema = z.strictObject({
   validation_result: emptyOrValidationResultSchema,
   pois: z.array(poiOutputSchema),
   created_by_staff_id: id,
+  // Staff-safe label (P3-P, private.staff_display_label); viewer-dependent, optional so older fixtures keep parsing.
+  created_by_staff_label: z.string().optional(),
   created_at: timestamp,
   published_at: timestamp.nullable(),
   superseded_at: timestamp.nullable(),

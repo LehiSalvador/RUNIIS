@@ -338,7 +338,9 @@ select is(pg_temp.sv($q$ select string_agg(action, ',' order by action) from (se
   'ADMIN_TASK_ASSIGNED,ADMIN_TASK_RESOLVED,ADMIN_TASK_STARTED,ADMIN_TASK_WAIVED', 'every staff transition is audited');
 select is(pg_temp.sv($q$ select count(*) from audit.audit_log where action = 'ADMIN_TASK_RESOLVED' and reason = 'Revisado, fecha correcta'
   and actor_staff_member_id = '20000000-0000-4000-8000-000000720002' $q$), '1', 'the audit row carries the actor and the reason');
-select is(pg_temp.sv($q$ select count(*) from infra.idempotency_record where operation_key like 'tasks.%' and actor_auth_user_id is not null $q$),
+-- Scoped to the rows this file created (its own synthetic staff users): the shared local database can hold 'tasks.%' records left by integration suites.
+select is(pg_temp.sv($q$ select count(*) from infra.idempotency_record where operation_key like 'tasks.%'
+  and actor_auth_user_id in (select id from auth.users where email like 'p720-%@example.test') $q$),
   '6', 'one idempotency record per successful command (start, assign, resolve, waive, refresh x2); refused commands leave none');
 select is(pg_temp.sv($q$ select schedule from cron.job where jobname = 'admin-task-sync' $q$), '*/5 * * * *', 'the sync is scheduled every 5 minutes');
 select is(pg_temp.sv($q$ select command from cron.job where jobname = 'admin-task-sync' $q$), 'select private.worker_admin_tasks_sync()',

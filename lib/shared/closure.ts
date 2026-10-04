@@ -73,6 +73,8 @@ export const attendanceResolutionSchema = z.strictObject({
   reason: z.string().nullable(),
   evidence_metadata: z.record(z.string(), z.unknown()),
   resolved_by_staff_id: id.nullable(),
+  /** Staff-safe label (P3-P, private.staff_display_label); viewer-dependent, optional so older fixtures keep parsing. */
+  resolved_by_staff_label: z.string().nullable().optional(),
   resolved_at: timestamp,
 });
 
@@ -85,6 +87,8 @@ export const sportingEligibilitySchema = z.strictObject({
   reason_code: z.string().nullable(),
   reason: z.string().nullable(),
   resolved_by_staff_id: id.nullable(),
+  /** Staff-safe label (P3-P, private.staff_display_label); viewer-dependent, optional so older fixtures keep parsing. */
+  resolved_by_staff_label: z.string().nullable().optional(),
   resolved_at: timestamp,
 });
 
@@ -98,6 +102,7 @@ export const attendanceFinalizationSchema = z.strictObject({
   no_show_count: z.int(),
   excluded_count: z.int(),
   finalized_by_staff_id: id,
+  finalized_by_staff_label: z.string().nullable().optional(),
   finalized_at: timestamp,
 });
 
@@ -108,6 +113,7 @@ export const administrativeClosureSchema = z.strictObject({
   attendance_finalization_id: id,
   status: z.literal("CLOSED"),
   closed_by_staff_id: id,
+  closed_by_staff_label: z.string().nullable().optional(),
   closed_at: timestamp,
 });
 

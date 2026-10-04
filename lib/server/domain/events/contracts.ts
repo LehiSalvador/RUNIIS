@@ -555,6 +555,8 @@ export const platformSettingsSchema = z.strictObject({
   availability_low_threshold_percent: z.number().nullable(),
   updated_at: timestamp.nullable(),
   updated_by_staff_id: id.nullable(),
+  // Staff-safe label (P3-P, private.staff_display_label): null while nobody has updated the settings; viewer-dependent.
+  updated_by_staff_label: z.string().nullable().optional(),
 });
 
 export const updatePlatformSettingsBodySchema = z.strictObject({
