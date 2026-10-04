@@ -10,6 +10,9 @@ import {
   attendanceResolutionSchema,
   attendanceWorkspaceRowSchema,
   closeEditionResultSchema,
+  closureHistoryPageSchema,
+  creditLedgerPageSchema,
+  finalizationHistoryPageSchema,
   reopenEditionResultSchema,
   reopenFinalizationResultSchema,
   sportingEligibilitySchema,
@@ -134,4 +137,84 @@ export async function reopenEdition(supabase: SupabaseClient, editionId: string,
   );
   logEvent("info", "edition_administrative_closure_reopened", { edition_id: editionId, reversed_credit_count: result.reversed_credit_count });
   return result;
+}
+
+// ---- Closure history and credit ledger (P3-T): read-only STABLE database functions, ATTENDANCE_MANAGE on the Edition ----
+// They write nothing and take no lock, so unlike the workspace they need no rate-limit slot and no explicit-request guard; the routes still
+// answer `private, no-store` (the rows depend on the viewer: staff labels, Edition scope).
+
+type RevisionHistoryFilters = { cursor?: string; limit?: number };
+
+export async function listFinalizationHistory(supabase: SupabaseClient, editionId: string, filters: RevisionHistoryFilters) {
+  const page = await callRpc(
+    supabase,
+    "admin_list_attendance_finalizations",
+    { p_edition_id: editionId, p_cursor_revision: decodeRevisionCursor(filters.cursor), p_limit: filters.limit ?? 20 },
+    finalizationHistoryPageSchema,
+  );
+  return { items: page.items, total: page.total, nextCursor: encodeCursor(page.next_cursor) };
+}
+
+export async function listClosureHistory(supabase: SupabaseClient, editionId: string, filters: RevisionHistoryFilters) {
+  const page = await callRpc(
+    supabase,
+    "admin_list_administrative_closures",
+    { p_edition_id: editionId, p_cursor_revision: decodeRevisionCursor(filters.cursor), p_limit: filters.limit ?? 20 },
+    closureHistoryPageSchema,
+  );
+  return { items: page.items, total: page.total, nextCursor: encodeCursor(page.next_cursor) };
+}
+
+export async function listDistanceCredits(
+  supabase: SupabaseClient,
+  editionId: string,
+  filters: { status?: string; modality_id?: string; registration_id?: string; cursor?: string; limit?: number },
+) {
+  const after = decodeCreditCursor(filters.cursor);
+  const page = await callRpc(
+    supabase,
+    "admin_list_distance_credits",
+    {
+      p_edition_id: editionId,
+      p_status: filters.status ?? null,
+      p_modality_id: filters.modality_id ?? null,
+      p_registration_id: filters.registration_id ?? null,
+      p_cursor_revision: after?.revision ?? null,
+      p_cursor_registration_number: after?.registration_number ?? null,
+      p_cursor_id: after?.id ?? null,
+      p_limit: filters.limit ?? 50,
+    },
+    creditLedgerPageSchema,
+  );
+  return { items: page.items, total: page.total, summary: page.summary, nextCursor: encodeCursor(page.next_cursor) };
+}
+
+function encodeCursor(next: object | null): string | null {
+  return next ? Buffer.from(JSON.stringify(next), "utf8").toString("base64url") : null;
+}
+
+function readCursor(cursor: string | undefined): Record<string, unknown> | null {
+  if (!cursor) return null;
+  try {
+    const decoded: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    return decoded && typeof decoded === "object" && !Array.isArray(decoded) ? (decoded as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+// An unreadable cursor falls through to the first page, like the other staff list cursors.
+function decodeRevisionCursor(cursor: string | undefined): number | null {
+  const decoded = readCursor(cursor);
+  return decoded && typeof decoded.revision === "number" && Number.isInteger(decoded.revision) && decoded.revision >= 1 ? decoded.revision : null;
+}
+
+function decodeCreditCursor(cursor: string | undefined): { revision: number; registration_number: string; id: string } | null {
+  const decoded = readCursor(cursor);
+  if (!decoded) return null;
+  const { revision, registration_number: registrationNumber, id } = decoded;
+  if (typeof revision !== "number" || !Number.isInteger(revision) || revision < 1) return null;
+  if (typeof registrationNumber !== "string" || registrationNumber === "" || registrationNumber.length > 64) return null;
+  if (typeof id !== "string" || !z.guid().safeParse(id).success) return null;
+  return { revision, registration_number: registrationNumber, id };
 }

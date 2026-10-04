@@ -130,6 +130,24 @@ export const readinessCheckSchema = z.strictObject({ code: z.string(), ok: z.boo
 export const finalizeReadinessSchema = z.strictObject({ ready: z.boolean(), checks: z.array(readinessCheckSchema), expected_count: z.int() });
 export const closeReadinessSchema = z.strictObject({ ready: z.boolean(), checks: z.array(readinessCheckSchema) });
 
+/** ACTIVE credited distance of an Edition (REVERSED credits never count); `by_modality` lists crediting modalities and any modality that holds credits. */
+export const creditedDistanceSummarySchema = z.strictObject({
+  total_m: z.int(),
+  active_credit_count: z.int(),
+  reversed_credit_count: z.int(),
+  by_modality: z.array(
+    z.strictObject({
+      modality_id: id,
+      name: z.string(),
+      official_distance_m: z.int().nullable(),
+      generates_distance_credit: z.boolean(),
+      active_credit_count: z.int(),
+      reversed_credit_count: z.int(),
+      credited_distance_m: z.int(),
+    }),
+  ),
+});
+
 const workspaceParticipantSchema = z.strictObject({
   registration_id: id,
   registration_number: z.string(),
@@ -163,6 +181,8 @@ export const attendanceWorkspaceRowSchema = z.strictObject({
   current_closure: administrativeClosureSchema.nullable(),
   finalize_readiness: finalizeReadinessSchema,
   close_readiness: closeReadinessSchema,
+  /** P3-T, additive: ACTIVE credited distance of the Edition (total and per modality). Optional so fixtures written before P3-T keep parsing. */
+  credited_distance: creditedDistanceSummarySchema.optional(),
   participants: z.array(workspaceParticipantSchema),
 });
 
@@ -170,6 +190,107 @@ export const attendanceWorkspaceRowSchema = z.strictObject({
 export const attendanceWorkspaceSchema = attendanceWorkspaceRowSchema.extend({
   participants_truncated: z.boolean(),
   participants_cap: z.literal(ATTENDANCE_WORKSPACE_ROW_CAP),
+});
+
+// ---- Closure history and credit ledger reads (P3-T; ATTENDANCE_MANAGE, read-only, keyset-paginated) ----
+
+export const CLOSURE_HISTORY_KINDS = ["FINALIZATION", "CLOSURE"] as const;
+export const CREDIT_STATUSES = ["ACTIVE", "REVERSED"] as const;
+
+/** One AttendanceFinalization revision. `reopen_*`/`superseded_at` are null on the current revision. Staff labels are viewer-safe (private.staff_display_label). */
+export const finalizationRevisionSchema = z.strictObject({
+  attendance_finalization_id: id,
+  edition_id: id,
+  revision: z.int(),
+  status: z.enum(["FINALIZED", "SUPERSEDED"]),
+  is_current: z.boolean(),
+  expected_count: z.int(),
+  present_count: z.int(),
+  no_show_count: z.int(),
+  excluded_count: z.int(),
+  finalized_by_staff_id: id,
+  finalized_by_staff_label: z.string().nullable(),
+  finalized_at: timestamp,
+  reopened_at: timestamp.nullable(),
+  reopened_by_staff_id: id.nullable(),
+  reopened_by_staff_label: z.string().nullable(),
+  reopen_reason: z.string().nullable(),
+  superseded_at: timestamp.nullable(),
+});
+
+/** One AdministrativeClosure revision plus the credits it produced (counts and ACTIVE distance; REVERSED ones stay counted as history). */
+export const closureRevisionSchema = z.strictObject({
+  administrative_closure_id: id,
+  edition_id: id,
+  revision: z.int(),
+  status: z.enum(["CLOSED", "SUPERSEDED"]),
+  is_current: z.boolean(),
+  attendance_finalization_id: id,
+  attendance_finalization_revision: z.int(),
+  closed_by_staff_id: id,
+  closed_by_staff_label: z.string().nullable(),
+  closed_at: timestamp,
+  reopened_at: timestamp.nullable(),
+  reopened_by_staff_id: id.nullable(),
+  reopened_by_staff_label: z.string().nullable(),
+  reopen_reason: z.string().nullable(),
+  superseded_at: timestamp.nullable(),
+  credit_count: z.int(),
+  active_credit_count: z.int(),
+  reversed_credit_count: z.int(),
+  active_credited_distance_m: z.int(),
+});
+
+const revisionCursorSchema = z.strictObject({ revision: z.int() });
+
+export const finalizationHistoryPageSchema = z.strictObject({
+  items: z.array(finalizationRevisionSchema),
+  total: z.int(),
+  next_cursor: revisionCursorSchema.nullable(),
+});
+
+export const closureHistoryPageSchema = z.strictObject({
+  items: z.array(closureRevisionSchema),
+  total: z.int(),
+  next_cursor: revisionCursorSchema.nullable(),
+});
+
+/**
+ * One DistanceCredit of the ledger. `participant_label` is the profile display name only (no contact data; a Guest never holds a credit).
+ * `supersedes_distance_credit_id` points at the reversed predecessor, `superseded_by_distance_credit_id` at the successor (Master §98 chain).
+ */
+export const distanceCreditLedgerItemSchema = z.strictObject({
+  distance_credit_id: id,
+  edition_id: id,
+  registration_id: id,
+  registration_number: z.string(),
+  participant_kind: z.literal("PROFILE"),
+  participant_label: z.string().nullable(),
+  modality: z.strictObject({ modality_id: id, name: z.string() }),
+  official_distance_snapshot_m: z.int(),
+  credited_distance_m: z.int(),
+  sport_date: z.string().min(1),
+  sport_timezone: z.string(),
+  status: z.enum(CREDIT_STATUSES),
+  source: z.string(),
+  created_at: timestamp,
+  administrative_closure_id: id,
+  closure_revision: z.int(),
+  reversed_at: timestamp.nullable(),
+  reversed_by_staff_id: id.nullable(),
+  reversed_by_staff_label: z.string().nullable(),
+  reversal_reason: z.string().nullable(),
+  supersedes_distance_credit_id: id.nullable(),
+  superseded_by_distance_credit_id: id.nullable(),
+});
+
+export const creditLedgerPageSchema = z.strictObject({
+  items: z.array(distanceCreditLedgerItemSchema),
+  /** Rows matching the filters. */
+  total: z.int(),
+  /** Edition-wide ACTIVE aggregate, independent of the filters. */
+  summary: creditedDistanceSummarySchema,
+  next_cursor: z.strictObject({ revision: z.int(), registration_number: z.string(), id: id }).nullable(),
 });
 
 export const registrationStatusSchema = z.strictObject({
@@ -218,6 +339,10 @@ export type AdministrativeClosure = z.output<typeof administrativeClosureSchema>
 export type CloseEditionResult = z.output<typeof closeEditionResultSchema>;
 export type ReopenFinalizationResult = z.output<typeof reopenFinalizationResultSchema>;
 export type ReopenEditionResult = z.output<typeof reopenEditionResultSchema>;
+export type CreditedDistanceSummary = z.output<typeof creditedDistanceSummarySchema>;
+export type FinalizationRevision = z.output<typeof finalizationRevisionSchema>;
+export type ClosureRevision = z.output<typeof closureRevisionSchema>;
+export type DistanceCreditLedgerItem = z.output<typeof distanceCreditLedgerItemSchema>;
 export type RegistrationStatus = z.output<typeof registrationStatusSchema>;
 export type CancelNotification = z.output<typeof cancelNotificationSchema>;
 export type CancelRegistrationResult = z.output<typeof cancelRegistrationResultSchema>;
