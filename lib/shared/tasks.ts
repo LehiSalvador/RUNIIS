@@ -34,6 +34,7 @@ export const TASK_SOURCE_RULES = [
   "provider-reconciliation", // provider reconciliation (platform-wide)
   "hold-concentration", // OD-P2-01 hoarding alert
   "registration-cancel-notice", // OWN-04: the cancellation email could not go out (no contact / suppressed)
+  "registration-request-cancel-notice", // P3-S: same, for the buyer of a request staff canceled
   "communication-critical-failure", // communication failure
   "communication-quota-exhausted",
   "outbox-escalated",

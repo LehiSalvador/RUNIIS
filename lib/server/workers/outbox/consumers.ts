@@ -25,4 +25,6 @@ export const outboxConsumerRegistry: OutboxConsumerRegistry = {
   EditionCanceled: { rpc: "enqueue_edition_event_messages", maxAttempts: 8 },
   // P3-C OWN-04: the participant (the buyer for a Guest) is always emailed when staff cancel a confirmed registration.
   RegistrationCanceled: { rpc: "enqueue_registration_canceled_messages", maxAttempts: 10 },
+  // P3-S (UX J2 step 4): the buyer is emailed when STAFF cancel a pending request (never on the buyer's own cancel or the worker's expiry).
+  RegistrationRequestCanceledByStaff: { rpc: "enqueue_registration_request_canceled_messages", maxAttempts: 10 },
 };

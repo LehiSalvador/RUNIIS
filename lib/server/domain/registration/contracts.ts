@@ -1,5 +1,6 @@
 import "server-only";
 import { z } from "zod";
+import { CANCEL_REASON_CATEGORIES } from "@/lib/shared/closure";
 import { REQUEST_STATUSES } from "@/lib/shared/registration";
 import {
   categoryRefSchema,
@@ -66,7 +67,25 @@ export const participantRowSchema = z.strictObject({
   guardian_verification_status: z.string().nullable(),
   pass: participantPassRefSchema,
   kit: kitAllocationRefSchema,
-  attendance: z.strictObject({ checked_in: z.boolean(), resolution_status: z.string().nullable() }),
+  attendance: z.strictObject({
+    checked_in: z.boolean(),
+    resolution_status: z.string().nullable(),
+    // P3-S (T13 4.13): `finalized` = the Edition's attendance has a current finalization; `final_status` = the resolution status once finalized.
+    finalized: z.boolean(),
+    final_status: z.string().nullable(),
+  }),
+  // P3-S: sporting eligibility of the current resolution (null until the closure workspace created it).
+  sporting_eligibility: z
+    .strictObject({ status: z.string(), distance_credit_disposition: z.string(), reason_code: z.string().nullable() })
+    .nullable(),
+  // P3-S: integrity cases of the registration. `count`/`highest_severity` = OPEN cases (severity null when none); `total_count` = every case. No free text.
+  incidents: z.strictObject({
+    count: z.number().int(),
+    highest_severity: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).nullable(),
+    total_count: z.number().int(),
+  }),
+  // P3-S: credited distance (metres) of the ACTIVE DistanceCredit; null until the Edition is closed.
+  credited_distance_m: z.number().int().nullable(),
   contact: z
     .strictObject({
       phone_e164: z.string().nullable(),
@@ -129,6 +148,8 @@ export const cancelRequestBodySchema = z.strictObject({
 
 export const staffCancelBodySchema = z.strictObject({
   reason: z.string().trim().min(1).max(500),
+  /** Closed category the buyer's cancellation email shows (the free-text reason stays internal). Optional, default OTHER. */
+  reason_category: z.enum(CANCEL_REASON_CATEGORIES).optional(),
 });
 
 export const revalidateConfirmBodySchema = z.strictObject({

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { CANCEL_REASON_CATEGORIES, cancelNotificationSchema } from "./closure";
 
 // Client-safe contract of the registration API (Master §61-84, §167-172). Pure: no server imports.
 
@@ -125,6 +126,8 @@ export const bulkCancelRequestsBodySchema = z.strictObject({
     .max(BULK_CANCEL_MAX_REQUESTS)
     .refine((ids) => new Set(ids.map((value) => value.toLowerCase())).size === ids.length, "duplicate ids"),
   reason: cancelReasonSchema,
+  /** Closed category the buyer's email shows (the free-text reason never leaves staff surfaces). Optional, default OTHER. */
+  reason_category: z.enum(CANCEL_REASON_CATEGORIES).optional(),
 });
 export type BulkCancelRequestsBody = z.output<typeof bulkCancelRequestsBodySchema>;
 
@@ -135,6 +138,12 @@ const bulkCancelResultRowSchema = z.strictObject({
   status: z.string().optional(),
   /** Stable domain code of an unexpected per-id failure (outcome FAILED); retry that id. */
   code: z.string().optional(),
+  /**
+   * P3-S (UX J2 step 4): present on outcome CANCELED only. Whether the buyer will be emailed (`queued`), cannot be (`suppressed`, `no_contact`:
+   * an ACTION_REQUIRED follow-up task is open, `follow_up_task_id`) or the outcome could not be read right now (`unknown`; the cancellation
+   * itself is committed and the outbox consumer opens the follow-up when needed).
+   */
+  notification: cancelNotificationSchema.optional(),
 });
 export const bulkCancelResultSchema = z.strictObject({
   edition_id: z.guid(),

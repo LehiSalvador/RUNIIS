@@ -259,16 +259,60 @@ export async function revalidateAndConfirmRegistrationRequest(
   return withWhatsAppUrl(view);
 }
 
-export async function staffCancelRegistrationRequest(supabase: SupabaseClient, id: string, reason: string, idempotencyKey: string | null) {
+export async function staffCancelRegistrationRequest(
+  supabase: SupabaseClient,
+  id: string,
+  reason: string,
+  idempotencyKey: string | null,
+  reasonCategory?: CancelReasonCategory,
+) {
   await consumeRateLimit(supabase, "admin.mutation");
+  // Without a category the 722 signature is called (default OTHER); with one, the overload that carries it (PostgREST resolves by argument names).
   const view = await callRpc(
     supabase,
     "staff_cancel_registration_request",
-    { p_registration_request_id: id, p_reason: reason, p_idempotency_key: idempotencyKey },
+    reasonCategory
+      ? { p_registration_request_id: id, p_reason: reason, p_reason_category: reasonCategory, p_idempotency_key: idempotencyKey }
+      : { p_registration_request_id: id, p_reason: reason, p_idempotency_key: idempotencyKey },
     registrationRequestSchema,
   );
-  logEvent("info", "registration_request_canceled_by_staff", { registration_request_id: id });
-  return withWhatsAppUrl(view);
+  const notification = await requestCancelNotificationOutcome(supabase, id);
+  logEvent("info", "registration_request_canceled_by_staff", {
+    registration_request_id: id,
+    reason_category: reasonCategory ?? "OTHER",
+    notification: notification.status,
+  });
+  return { ...withWhatsAppUrl(view), notification };
+}
+
+const requestCancelNotificationRowSchema = z.strictObject({ status: z.enum(["queued", "suppressed", "no_contact"]), follow_up_task_id: z.guid().nullable() });
+const requestCancelNotificationsSchema = z.array(requestCancelNotificationRowSchema.extend({ registration_request_id: z.guid() }));
+
+/**
+ * UX J2 step 4 (P3-S): whether the buyer will be emailed about a staff cancel, and the staff follow-up task when they cannot be. Evaluated after
+ * the cancellation committed (the email itself is sent later by the RegistrationRequestCanceledByStaff outbox consumer, which opens the same
+ * task), so a failure here must not turn a successful cancellation into an error: it is reported as `unknown` and the consumer is the backstop.
+ */
+async function requestCancelNotificationOutcome(supabase: SupabaseClient, requestId: string): Promise<CancelNotification> {
+  try {
+    const row = await callRpc(supabase, "registration_request_cancel_notification", { p_registration_request_id: requestId }, requestCancelNotificationRowSchema);
+    return cancelNotificationSchema.parse({ status: row.status, follow_up_task_id: row.follow_up_task_id });
+  } catch {
+    logEvent("warn", "registration_request_cancel_notification_unavailable", { registration_request_id: requestId });
+    return { status: "unknown", follow_up_task_id: null };
+  }
+}
+
+/** The outcome of every canceled request of a batch (one RPC); an id the RPC did not report, or a failed read, is `unknown`. */
+async function requestCancelNotificationOutcomes(supabase: SupabaseClient, editionId: string, requestIds: string[]): Promise<Map<string, CancelNotification>> {
+  const outcomes = new Map<string, CancelNotification>();
+  try {
+    const rows = await callRpc(supabase, "registration_request_cancel_notifications", { p_edition_id: editionId, p_request_ids: requestIds }, requestCancelNotificationsSchema);
+    for (const row of rows) outcomes.set(row.registration_request_id, { status: row.status, follow_up_task_id: row.follow_up_task_id });
+  } catch {
+    logEvent("warn", "registration_request_cancel_notifications_unavailable", { edition_id: editionId, requested: requestIds.length });
+  }
+  return outcomes;
 }
 
 /**
@@ -285,8 +329,16 @@ export async function staffBulkCancelRegistrationRequests(
   const result = await callRpc(
     supabase,
     "staff_bulk_cancel_registration_requests",
-    { p_edition_id: editionId, p_request_ids: body.request_ids, p_reason: body.reason, p_idempotency_key: idempotencyKey },
+    body.reason_category
+      ? { p_edition_id: editionId, p_request_ids: body.request_ids, p_reason: body.reason, p_reason_category: body.reason_category, p_idempotency_key: idempotencyKey }
+      : { p_edition_id: editionId, p_request_ids: body.request_ids, p_reason: body.reason, p_idempotency_key: idempotencyKey },
     bulkCancelResultSchema,
+  );
+  // UX J2 step 4 / P3-AC-13: every request this batch canceled reports whether its buyer will be emailed (the consumer sends one email each).
+  const canceledIds = result.results.filter((row) => row.outcome === "CANCELED").map((row) => row.registration_request_id);
+  const outcomes = canceledIds.length > 0 ? await requestCancelNotificationOutcomes(supabase, editionId, canceledIds) : new Map<string, CancelNotification>();
+  const results = result.results.map((row) =>
+    row.outcome === "CANCELED" ? { ...row, notification: outcomes.get(row.registration_request_id) ?? { status: "unknown" as const, follow_up_task_id: null } } : row,
   );
   logEvent("info", "registration_requests_bulk_canceled", {
     edition_id: editionId,
@@ -294,8 +346,9 @@ export async function staffBulkCancelRegistrationRequests(
     canceled: result.canceled_count,
     rejected: result.rejected_count,
     failed: result.failed_count,
+    notified_follow_up: results.filter((row) => row.notification && row.notification.status !== "queued").length,
   });
-  return result;
+  return { ...result, results };
 }
 
 // ---- Participants list/export (Master §172) ----

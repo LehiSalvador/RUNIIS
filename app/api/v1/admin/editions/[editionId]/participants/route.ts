@@ -7,6 +7,9 @@ const paramsSchema = z.strictObject({ editionId: z.guid() });
 
 // PARTICIPANT_LIST_READ (ADMIN, OPERATOR). Contact fields are included only when the caller also holds
 // PII_EXPORT (Master §145); `meta.contact_visible` tells the client whether they were included.
+// P3-S (T13 4.13, additive, same RBAC, read-only): every row also carries `attendance.finalized` / `attendance.final_status`, `sporting_eligibility`
+// ({status, distance_credit_disposition, reason_code} | null), `incidents` ({count, highest_severity, total_count}: open integrity cases, no free text) and
+// `credited_distance_m` (the ACTIVE credit's distance once the Edition is closed, else null).
 export const GET = defineRoute(
   { auth: { staff: ["ADMIN", "OPERATOR"], editionParam: "editionId" }, input: { params: paramsSchema, query: participantListQuerySchema } },
   async ({ supabase, input }) => {
