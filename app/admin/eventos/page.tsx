@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
 import React, { Suspense } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import { AdminPage } from "@/components/admin/admin-page";
+import { isGlobalAdmin } from "@/components/admin/events/permissions";
+import { buttonVariants } from "@/components/ui/button";
 import { CursorPager } from "@/components/admin/cursor-pager";
 import { DataFreshness } from "@/components/admin/data-freshness";
 import { EditionsTable } from "@/components/admin/editions-table";
@@ -46,7 +50,18 @@ export default async function AdminEventsPage({ searchParams }: { searchParams: 
   const { supabase, assignments } = gate.staff;
 
   return (
-    <AdminPage assignments={assignments} title="Eventos">
+    <AdminPage
+      assignments={assignments}
+      title="Eventos"
+      actions={
+        isGlobalAdmin(assignments) ? (
+          <Link href="/admin/eventos/nuevo" prefetch={false} className={buttonVariants({ size: "sm" })}>
+            <Plus className="size-4" aria-hidden="true" />
+            Nueva edición
+          </Link>
+        ) : undefined
+      }
+    >
       <div className="flex flex-col gap-4">
         <FilterBar fields={FILTERS} />
         <Suspense key={current.toString()} fallback={<TableSkeleton rows={8} columns={6} label="Cargando ediciones" />}>

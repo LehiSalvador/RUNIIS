@@ -12,6 +12,9 @@ import { editionQuickLinks } from "@/components/admin/edition-links";
 import { ErrorNotice } from "@/components/admin/error-notice";
 import { formatCalendarDate, formatClock, formatDateTime } from "@/components/admin/format";
 import { DefinitionList, Panel } from "@/components/admin/panel";
+import { EditionSubnav } from "@/components/admin/events/edition-subnav";
+import { LifecyclePanel } from "@/components/admin/events/lifecycle-panel";
+import { canManageLifecycle } from "@/components/admin/events/permissions";
 import { ReadinessChecklist } from "@/components/admin/readiness-checklist";
 import { PanelsSkeleton } from "@/components/admin/skeletons";
 import { CLOSURE_LABEL, ExecutionBadge, PublicationBadge, RegistrationBadge } from "@/components/admin/status-badges";
@@ -99,6 +102,7 @@ async function EditionOverview({
   const zone = edition.timezone;
   const schedule = edition.schedule;
   const links = editionQuickLinks(edition.edition_id, assignments);
+  const isAdmin = canManageLifecycle(assignments, edition.edition_id);
   const modalityNames = Object.fromEntries(modalities.map((modality) => [modality.modality_id, modality.name]));
 
   return (
@@ -124,6 +128,7 @@ async function EditionOverview({
       }
     >
       <div className="flex flex-col gap-4">
+        <EditionSubnav editionId={edition.edition_id} current="resumen" />
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex flex-wrap items-center gap-2" aria-label="Estado de la edición" role="group">
             <PublicationBadge value={edition.publication_state} />
@@ -198,13 +203,26 @@ async function EditionOverview({
 
         <Panel
           title="Readiness"
-          description="Condiciones para publicar y para abrir inscripciones. Se recalculan en cada lectura."
+          description="Todo lo que falta para publicar y para abrir inscripciones, según el servidor. Se recalcula en cada lectura."
         >
           <div className="grid gap-6 lg:grid-cols-2">
             <ReadinessChecklist title="Publicación" ready={readiness.publication.ready} checks={readiness.publication.checks} />
             <ReadinessChecklist title="Inscripciones" ready={readiness.registration.ready} checks={readiness.registration.checks} />
           </div>
         </Panel>
+
+        <LifecyclePanel
+          editionId={edition.edition_id}
+          states={{
+            publication_state: edition.publication_state,
+            registration_state: edition.registration_state,
+            execution_state: edition.execution_state,
+          }}
+          readiness={readiness}
+          timezone={zone}
+          schedule={schedule}
+          isAdmin={isAdmin}
+        />
 
         {links.length > 0 ? (
           <Panel title="Secciones de esta edición">

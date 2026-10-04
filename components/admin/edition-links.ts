@@ -23,11 +23,19 @@ export type EditionLinkCandidate = {
 export const EDITION_LINK_CANDIDATES: readonly EditionLinkCandidate[] = [
   {
     key: "configuracion",
-    label: "Configuración y publicación",
-    description: "Fechas, modalidades, precios y readiness.",
+    label: "Datos y fechas",
+    description: "Nombre, sede, fechas clave, zona horaria e inscripción.",
     route: "/admin/eventos/[editionId]/configuracion",
     section: "eventos",
     href: (id) => `/admin/eventos/${id}/configuracion`,
+  },
+  {
+    key: "modalidades",
+    label: "Modalidades y precios",
+    description: "Modalidades, precios, capacidad y categorías.",
+    route: "/admin/eventos/[editionId]/modalidades",
+    section: "eventos",
+    href: (id) => `/admin/eventos/${id}/modalidades`,
   },
   {
     key: "ruta",

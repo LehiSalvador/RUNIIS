@@ -30,7 +30,10 @@ export const AVAILABLE_ROUTES: readonly string[] = [
   "/cuenta/comunicaciones",
   "/admin",
   "/admin/eventos",
+  "/admin/eventos/nuevo",
   "/admin/eventos/[editionId]",
+  "/admin/eventos/[editionId]/configuracion",
+  "/admin/eventos/[editionId]/modalidades",
 ];
 
 export function isRouteAvailable(href: string): boolean {

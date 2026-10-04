@@ -228,7 +228,11 @@ test.describe("edition overview", () => {
 
     // no quick links to sections that do not exist yet: every link in main goes to a built route
     const hrefs = await page.locator("main a[href]").evaluateAll((a) => a.map((x) => x.getAttribute("href") ?? ""));
-    for (const href of hrefs) expect(["/admin/eventos", "/admin", "/cuenta", "/"].includes(href) || href.startsWith("/eventos/"), href).toBe(true);
+    for (const href of hrefs) {
+      // built routes only: the list, the dashboard, the public site and (P3-E1) this Edition's own sections
+      const own = /^[/]admin[/]eventos[/][0-9a-f-]{36}([/](configuracion|modalidades))?$/.test(href);
+      expect(["/admin/eventos", "/admin", "/cuenta", "/"].includes(href) || href.startsWith("/eventos/") || own, href).toBe(true);
+    }
     await expect(page.getByRole("link", { name: "Ver en el sitio" })).toHaveAttribute("href", /\/eventos\/[a-z0-9-]+$/);
     await expect(page.getByText("Actualizado a las")).toBeVisible();
     await a11y();
