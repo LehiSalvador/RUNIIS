@@ -2,7 +2,7 @@ import React from "react";
 import Link from "next/link";
 import { cn } from "@/lib/client/cn";
 
-export type EditionSection = "resumen" | "configuracion" | "modalidades" | "formularios" | "ubicaciones" | "agenda" | "contenido" | "rutas" | "kits" | "tutores";
+export type EditionSection = "resumen" | "configuracion" | "modalidades" | "formularios" | "ubicaciones" | "agenda" | "contenido" | "rutas" | "kits" | "tutores" | "solicitudes" | "participantes";
 
 const SECTIONS: readonly { key: EditionSection; label: string; href: (editionId: string) => string }[] = [
   { key: "resumen", label: "Resumen y estado", href: (id) => `/admin/eventos/${id}` },
@@ -13,6 +13,8 @@ const SECTIONS: readonly { key: EditionSection; label: string; href: (editionId:
   { key: "agenda", label: "Agenda", href: (id) => `/admin/eventos/${id}/agenda` },
   { key: "contenido", label: "Contenido", href: (id) => `/admin/eventos/${id}/contenido` },
   { key: "rutas", label: "Rutas", href: (id) => `/admin/eventos/${id}/rutas` },
+  { key: "solicitudes", label: "Solicitudes", href: (id) => `/admin/eventos/${id}/solicitudes` },
+  { key: "participantes", label: "Participantes", href: (id) => `/admin/eventos/${id}/participantes` },
   { key: "kits", label: "Kits", href: (id) => `/admin/eventos/${id}/kits` },
   { key: "tutores", label: "Mesa de tutores", href: (id) => `/admin/eventos/${id}/tutores` },
 ];

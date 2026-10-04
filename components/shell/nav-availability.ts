@@ -41,6 +41,8 @@ export const AVAILABLE_ROUTES: readonly string[] = [
   "/admin/eventos/[editionId]/rutas",
   "/admin/eventos/[editionId]/kits",
   "/admin/eventos/[editionId]/tutores",
+  "/admin/eventos/[editionId]/solicitudes",
+  "/admin/eventos/[editionId]/participantes",
   "/scanner",
 ];
 

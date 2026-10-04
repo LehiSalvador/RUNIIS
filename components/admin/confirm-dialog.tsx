@@ -3,6 +3,7 @@
 import React from "react";
 import { Button } from "@/components/ui/button";
 import { Modal, ModalActions, ModalClose, ModalContent } from "@/components/ui/modal";
+import { useReturnFocus } from "@/components/admin/use-return-focus";
 import { newIdempotencyKey, type ApiFailure, type ApiResult } from "@/lib/client/api";
 import { ErrorNoticeView } from "@/components/admin/error-notice";
 import { describeFailure } from "@/components/admin/errors";
@@ -42,9 +43,10 @@ export function ConfirmDialog(props: ConfirmDialogProps) {
   // The form (and with it the draft reason, the error and the idempotency key) only exists while the dialog is
   // open, so every open is a fresh intent without any reset effect.
   const pendingRef = React.useRef(false);
+  const returnFocus = useReturnFocus();
   return (
     <Modal open={open} onOpenChange={(next) => (pendingRef.current ? undefined : onOpenChange(next))}>
-      <ModalContent title={title} description={description}>
+      <ModalContent {...returnFocus} title={title} description={description}>
         <ConfirmForm {...props} pendingRef={pendingRef} />
       </ModalContent>
     </Modal>

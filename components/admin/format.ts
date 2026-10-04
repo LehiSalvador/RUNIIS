@@ -31,6 +31,14 @@ export function formatDateTime(iso: string | null | undefined, timeZone?: string
   }).format(date);
 }
 
+/** "3 oct, 14:30" in the given zone (no year: for dense tables where the year is obvious); "—" when absent or unparseable. */
+export function formatDateTimeShort(iso: string | null | undefined, timeZone?: string | null): string {
+  if (!iso) return "—";
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: false, timeZone: safeZone(timeZone) }).format(date);
+}
+
 /** "3 oct 2026" from a calendar date (YYYY-MM-DD), without any timezone shift. */
 export function formatCalendarDate(value: string | null | undefined): string {
   if (!value) return "—";

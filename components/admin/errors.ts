@@ -62,7 +62,7 @@ const SPEC: Record<ApiFailureCode, ErrorSpec> = {
   PROFILE_INCOMPLETE: { kind: "rule", title: "Perfil incompleto", message: "El perfil de la persona está incompleto. Debe completarlo para continuar.", action: "none" },
   AVATAR_UPLOAD_SUSPENDED: { kind: "permission", title: "Carga de avatar suspendida", message: "A esta cuenta se le suspendió la carga de avatar.", action: "none" },
   RANKING_NOT_READY: { kind: "rule", title: "Ranking no disponible", message: "El ranking todavía no está listo. Inténtalo cuando termine la consolidación.", action: "none" },
-  RATE_LIMITED: { kind: "rate_limit", title: "Demasiadas solicitudes", message: "Espera unos segundos antes de intentar de nuevo.", action: "retry" },
+  RATE_LIMITED: { kind: "rate_limit", title: "Demasiadas acciones", message: "Demasiadas acciones seguidas: espera un momento antes de intentar de nuevo.", action: "retry" },
   DEPENDENCY_UNAVAILABLE: { kind: "provider", title: "Servicio no disponible", message: "Un servicio del que depende esta pantalla no responde. Reintenta en un momento; si sigue, avisa a soporte con la referencia.", action: "retry" },
   NETWORK_ERROR: { kind: "network", title: "Sin conexión con el servidor", message: "No pudimos conectar. Revisa tu conexión y reintenta; lo que no se haya guardado no se aplicó.", action: "retry" },
   INTERNAL_ERROR: { kind: "unexpected", title: "Algo salió mal", message: "Ocurrió un error inesperado. Reintenta y, si persiste, avisa a soporte con la referencia.", action: "support" },
