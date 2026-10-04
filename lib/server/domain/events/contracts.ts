@@ -113,7 +113,14 @@ export const createEditionBodySchema = z.strictObject({
   schedule: scheduleInputSchema.optional(),
 });
 
+// P3-L optimistic concurrency: the Edition `updated_at` the client last read (editor projection `edition.updated_at`). Optional so
+// callers that do not send it keep the previous last-write-wins behaviour; when present and stale the command refuses with
+// 409 CONFLICT {reason: "STALE_STATE"} and changes nothing. Pass the value back exactly as received (never reformat it).
+export const EDITION_PRECONDITION_FIELD = "expected_updated_at";
+const editionPrecondition = { expected_updated_at: z.iso.datetime({ offset: true }).optional() };
+
 export const updateEditionBodySchema = z.strictObject({
+  ...editionPrecondition,
   name: z.string().trim().min(1).max(160).optional(),
   slug: z.string().trim().min(1).max(160).optional(),
   timezone: z.string().trim().min(1).max(64).optional(),
@@ -129,6 +136,7 @@ export const updateEditionBodySchema = z.strictObject({
 });
 
 export const setEditionScheduleBodySchema = z.strictObject({
+  ...editionPrecondition,
   local_date: dateStr,
   local_start_time: timeStr.optional(),
   local_end_time: timeStr.optional(),
@@ -138,26 +146,28 @@ const setScheduleResultSchema = z.strictObject({ edition: editionSchema, changed
 
 export const editionTransitionResultSchema = z.strictObject({ edition: editionSchema }).catchall(z.unknown());
 
-export const publishEditionBodySchema = z.strictObject({});
-export const hideEditionBodySchema = z.strictObject({ reason: z.string().trim().min(1).max(500) });
-export const openRegistrationBodySchema = z.strictObject({});
-export const pauseRegistrationBodySchema = z.strictObject({ reason: z.string().trim().min(1).max(500) });
-export const resumeRegistrationBodySchema = z.strictObject({});
-export const closeRegistrationBodySchema = z.strictObject({ reason: z.string().trim().min(1).max(500) });
+export const publishEditionBodySchema = z.strictObject({ ...editionPrecondition });
+export const hideEditionBodySchema = z.strictObject({ ...editionPrecondition, reason: z.string().trim().min(1).max(500) });
+export const openRegistrationBodySchema = z.strictObject({ ...editionPrecondition });
+export const pauseRegistrationBodySchema = z.strictObject({ ...editionPrecondition, reason: z.string().trim().min(1).max(500) });
+export const resumeRegistrationBodySchema = z.strictObject({ ...editionPrecondition });
+export const closeRegistrationBodySchema = z.strictObject({ ...editionPrecondition, reason: z.string().trim().min(1).max(500) });
 export const postponeEditionBodySchema = z.strictObject({
+  ...editionPrecondition,
   reason: z.string().trim().min(1).max(500),
   registration_action: z.enum(["PAUSE", "CLOSE"]).optional(),
 });
 export const rescheduleEditionBodySchema = z.strictObject({
+  ...editionPrecondition,
   reason: z.string().trim().min(1).max(500),
   local_date: dateStr,
   local_start_time: timeStr.optional(),
   local_end_time: timeStr.optional(),
   registration_close_at: z.iso.datetime({ offset: true }).optional(),
 });
-export const cancelEditionBodySchema = z.strictObject({ reason: z.string().trim().min(1).max(500) });
-export const startEditionBodySchema = z.strictObject({});
-export const finishEditionBodySchema = z.strictObject({});
+export const cancelEditionBodySchema = z.strictObject({ ...editionPrecondition, reason: z.string().trim().min(1).max(500) });
+export const startEditionBodySchema = z.strictObject({ ...editionPrecondition });
+export const finishEditionBodySchema = z.strictObject({ ...editionPrecondition });
 
 // ---- Modality ----
 
@@ -672,6 +682,62 @@ export const adminEditionEditorSchema = z.strictObject({
   content_blocks: z.array(contentBlockSchema),
   kits: z.array(kitDefinitionSchema),
 });
+
+// ---- Events catalogue and Event read projection (P3-L, Master 27/169) ----
+
+const eventListItemSchema = eventSchema.extend({ edition_count: z.int().min(0), latest_edition_created_at: timestamp.nullable() });
+
+export const adminEventListSchema = z.strictObject({
+  items: z.array(eventListItemSchema),
+  next_cursor: z.strictObject({ created_at: timestamp, event_id: id }).nullable(),
+});
+
+export const adminEventListQuerySchema = z.strictObject({
+  status: z.enum(["ACTIVE", "ARCHIVED"]).optional(),
+  event_type_key: z.string().trim().min(1).max(64).optional(),
+  search: z.string().trim().max(100).optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().min(1).max(100).optional(),
+});
+
+export const adminEventSchema = eventSchema.extend({
+  edition_count: z.int().min(0),
+  editions: z.array(
+    z.strictObject({
+      edition_id: id,
+      slug: z.string(),
+      name: z.string(),
+      publication_state: z.enum(["DRAFT", "PUBLISHED", "HIDDEN"]),
+      registration_state: z.enum(["NOT_OPEN", "OPEN", "PAUSED", "CLOSED"]),
+      execution_state: z.enum(["SCHEDULED", "POSTPONED", "IN_PROGRESS", "FINISHED", "CANCELED"]),
+      sport_date: dateStr.nullable(),
+      created_at: timestamp,
+      updated_at: timestamp,
+    }),
+  ),
+});
+
+// ---- Anti-hoarding policy (P3-D RPCs, P3-L HTTP surface) ----
+
+export const antiHoardingPolicySchema = z.strictObject({
+  captcha_new_account_hours: z.int(),
+  large_hold_min_places: z.int(),
+  new_account_hold_share_percent: z.number(),
+  new_account_hold_min_places: z.int(),
+  single_buyer_hold_places: z.int(),
+  updated_at: timestamp,
+});
+
+// Bounds mirror private.update_anti_hoarding_policy (the database stays the source of truth). A PATCH changes only what it names.
+export const updateAntiHoardingPolicyBodySchema = z
+  .strictObject({
+    captcha_new_account_hours: z.int().min(1).max(168).optional(),
+    large_hold_min_places: z.int().min(2).max(20).optional(),
+    new_account_hold_share_percent: z.number().min(0.01).max(100).optional(),
+    new_account_hold_min_places: z.int().min(1).max(100000).optional(),
+    single_buyer_hold_places: z.int().min(2).max(20).optional(),
+  })
+  .refine((body) => Object.keys(body).length > 0, { message: "At least one policy field is required" });
 
 // ---- Params ----
 

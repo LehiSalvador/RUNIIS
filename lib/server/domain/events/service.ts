@@ -6,6 +6,10 @@ import { callRpc, mapRpcError } from "../../rpc";
 import {
   adminEditionEditorSchema,
   adminEditionListSchema,
+  adminEventListSchema,
+  adminEventSchema,
+  antiHoardingPolicySchema,
+  EDITION_PRECONDITION_FIELD,
   categorySchema,
   contentBlockSchema,
   createEventBodySchema,
@@ -55,6 +59,46 @@ export async function createEvent(supabase: SupabaseClient, body: CreateEventBod
 
 export async function updateEvent(supabase: SupabaseClient, eventId: string, body: JsonObject) {
   return callRpc(supabase, "update_event", { p_event_id: eventId, p_input: body }, eventSchema);
+}
+
+// ---- Events catalogue / Event read projection (P3-L) ----
+
+export async function adminListEvents(
+  supabase: SupabaseClient,
+  filters: { status?: string; event_type_key?: string; search?: string; cursor?: string; limit?: number },
+) {
+  const after = filters.cursor ? decodeEventCursor(filters.cursor) : { created_at: null, event_id: null };
+  const page = await callRpc(
+    supabase,
+    "admin_list_events",
+    {
+      p_status: filters.status ?? null,
+      p_event_type_key: filters.event_type_key ?? null,
+      p_search: filters.search ?? null,
+      p_cursor_created_at: after.created_at,
+      p_cursor_id: after.event_id,
+      p_limit: filters.limit ?? 20,
+    },
+    adminEventListSchema,
+  );
+  return { items: page.items, nextCursor: page.next_cursor ? Buffer.from(JSON.stringify(page.next_cursor), "utf8").toString("base64url") : null };
+}
+
+function decodeEventCursor(cursor: string): { created_at: string | null; event_id: string | null } {
+  try {
+    const decoded: unknown = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8"));
+    if (decoded && typeof decoded === "object" && "created_at" in decoded && "event_id" in decoded) {
+      const { created_at, event_id } = decoded as { created_at: unknown; event_id: unknown };
+      if (typeof created_at === "string" && typeof event_id === "string") return { created_at, event_id };
+    }
+  } catch {
+    // falls through to the first page, like the Editions cursor
+  }
+  return { created_at: null, event_id: null };
+}
+
+export async function adminGetEvent(supabase: SupabaseClient, eventId: string) {
+  return callRpc(supabase, "admin_get_event", { p_event_id: eventId }, adminEventSchema);
 }
 
 // ---- Admin list/editor ----
@@ -123,15 +167,51 @@ export async function createEdition(supabase: SupabaseClient, eventId: string, b
   return result;
 }
 
+// P3-L optimistic concurrency. The optional `expected_updated_at` travels in the body but is never part of the command input: it is
+// split off here and, when present, the command runs through the atomic guard (lock, compare, run in one transaction; stale ->
+// 409 CONFLICT {reason: STALE_STATE}). Absent -> the plain command, exactly as before.
+function splitPrecondition(body: JsonObject): { input: JsonObject; expected: string | null } {
+  const { [EDITION_PRECONDITION_FIELD]: expected, ...input } = body;
+  return { input, expected: typeof expected === "string" ? expected : null };
+}
+
 export async function updateEdition(supabase: SupabaseClient, editionId: string, body: JsonObject) {
-  return callRpc(supabase, "update_edition", { p_edition_id: editionId, p_input: body }, editionUpdateResultSchema);
+  const { input, expected } = splitPrecondition(body);
+  if (expected === null) return callRpc(supabase, "update_edition", { p_edition_id: editionId, p_input: input }, editionUpdateResultSchema);
+  return callRpc(
+    supabase,
+    "guarded_edition_command",
+    { p_edition_id: editionId, p_command: "UPDATE", p_expected_updated_at: expected, p_input: input, p_idempotency_key: null },
+    editionUpdateResultSchema,
+  );
 }
 
 export async function setEditionSchedule(supabase: SupabaseClient, editionId: string, body: JsonObject) {
-  return callRpc(supabase, "set_edition_schedule", { p_edition_id: editionId, p_input: body }, setScheduleResultSchema);
+  const { input, expected } = splitPrecondition(body);
+  if (expected === null) return callRpc(supabase, "set_edition_schedule", { p_edition_id: editionId, p_input: input }, setScheduleResultSchema);
+  return callRpc(
+    supabase,
+    "guarded_edition_command",
+    { p_edition_id: editionId, p_command: "SET_SCHEDULE", p_expected_updated_at: expected, p_input: input, p_idempotency_key: null },
+    setScheduleResultSchema,
+  );
 }
 
 // ---- Edition transitions ----
+
+const TRANSITION_COMMAND: Record<string, string> = {
+  publish: "PUBLISH",
+  hide: "HIDE",
+  "open-registration": "OPEN_REGISTRATION",
+  "pause-registration": "PAUSE_REGISTRATION",
+  "resume-registration": "RESUME_REGISTRATION",
+  "close-registration": "CLOSE_REGISTRATION",
+  postpone: "POSTPONE",
+  reschedule: "RESCHEDULE",
+  cancel: "CANCEL",
+  start: "START",
+  finish: "FINISH",
+};
 
 const TRANSITION_FN: Record<string, string> = {
   publish: "publish_edition",
@@ -154,12 +234,27 @@ export async function transitionEdition(
   body: JsonObject,
   idempotencyKey: string | null,
 ) {
-  const result = await callRpc(
-    supabase,
-    TRANSITION_FN[command],
-    { p_edition_id: editionId, p_input: body, p_idempotency_key: idempotencyKey },
-    editionTransitionResultSchema,
-  );
+  const { input, expected } = splitPrecondition(body);
+  const result =
+    expected === null
+      ? await callRpc(
+          supabase,
+          TRANSITION_FN[command],
+          { p_edition_id: editionId, p_input: input, p_idempotency_key: idempotencyKey },
+          editionTransitionResultSchema,
+        )
+      : await callRpc(
+          supabase,
+          "guarded_edition_command",
+          {
+            p_edition_id: editionId,
+            p_command: TRANSITION_COMMAND[command],
+            p_expected_updated_at: expected,
+            p_input: input,
+            p_idempotency_key: idempotencyKey,
+          },
+          editionTransitionResultSchema,
+        );
   logEvent("info", "edition_transition", { edition_id: editionId, command });
   return result;
 }
@@ -286,6 +381,22 @@ export async function adminGetPlatformSettings(supabase: SupabaseClient) {
 }
 export async function updatePlatformSettings(supabase: SupabaseClient, body: JsonObject) {
   return callRpc(supabase, "update_platform_settings", { p_input: body }, platformSettingsSchema);
+}
+
+// ---- Anti-hoarding policy (P3-D migration 721 RPCs; ADMIN global, audited) ----
+
+export async function adminGetAntiHoardingPolicy(supabase: SupabaseClient) {
+  return callRpc(supabase, "admin_get_anti_hoarding_policy", {}, antiHoardingPolicySchema);
+}
+export async function updateAntiHoardingPolicy(supabase: SupabaseClient, body: JsonObject, idempotencyKey: string) {
+  const result = await callRpc(
+    supabase,
+    "update_anti_hoarding_policy_idempotent",
+    { p_input: body, p_idempotency_key: idempotencyKey },
+    antiHoardingPolicySchema,
+  );
+  logEvent("info", "anti_hoarding_policy_updated", { field_count: Object.keys(body).length });
+  return result;
 }
 
 // ---- Legal documents (Master §123, §165) ----
