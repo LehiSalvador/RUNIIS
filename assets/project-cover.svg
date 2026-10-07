@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="320" viewBox="0 0 1200 320" role="img" aria-labelledby="title desc" font-family="Arial, Helvetica, sans-serif">
+<title id="title">RUNIIS</title><desc id="desc">Eventos deportivos, inscripciones y operación</desc>
+<rect width="1200" height="320" rx="18" fill="#0d1117"/>
+<rect x=".5" y=".5" width="1199" height="319" rx="18" stroke="#30363d" fill="none"/>
+<rect x="0" y="42" width="5" height="236" rx="2" fill="#bc7886"/>
+<text x="62" y="63" fill="#bc7886" font-size="20">Lehi Salvador · Producto y proyectos</text>
+<text x="62" y="137" fill="#e6edf3" font-size="54" font-weight="700">RUNIIS</text>
+<text x="62" y="184" fill="#bdc5cf" font-size="24">Eventos deportivos, inscripciones y operación</text>
+<path d="M62 217H1138" stroke="#30363d"/>
+<text x="62" y="262" fill="#9da7b3" font-size="20">Plataforma en desarrollo · 2026</text>
+</svg>
